@@ -5,7 +5,7 @@ Training and evaluation scripts for wake word detection DNN models.
 * Tensorflow
 
 # Dataset 
-["hey-snips" research dataset] (https://github.com/sonos/keyword-spotting-research-datasets) 
+["hey-snips" research dataset](https://github.com/sonos/keyword-spotting-research-datasets) 
 
 ## License
 Copyright 2021, 
