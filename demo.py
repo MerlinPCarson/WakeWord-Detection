@@ -12,7 +12,7 @@ from spokestack.wakeword.tflite import WakewordTrigger
 logging.basicConfig(level=logging.INFO)
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='Gamma-Spectra Recalibration')
+    parser = argparse.ArgumentParser(description='Spokestack demo script for VAD and Wake Word detection')
     parser.add_argument('--models_dir', type=str, default='tf_models', help='directory with TF-Lite models filter, decode, detect')
     parser.add_argument('--sr', type=int, default=16000, help='Sample rate for audio (Hz)')
     parser.add_argument('--fw', type=int, default=20, help='Frame width for audio in (ms)')
