@@ -101,7 +101,7 @@ def main(args) -> int:
     filter = Filter(model_dir=args.models_dir)
 
 
-    # load, filter and save each dataset to .h5 file
+    # load, filter and save features of each audio file in dataset
     for dataset in glob(os.path.join(args.data_dir, '*.json')):
         print(dataset)
         dataset_filter = Dataset_Filter(dataset, filter, **vars(args))
