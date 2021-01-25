@@ -8,6 +8,7 @@ from spokestack.io.pyaudio import PyAudioInput
 from spokestack.pipeline import SpeechPipeline
 from spokestack.vad.webrtc import VoiceActivityDetector
 from spokestack.wakeword.tflite import WakewordTrigger
+from spokestack.activation_timeout import ActivationTimeout
 
 logging.basicConfig(level=logging.INFO)
 
@@ -26,8 +27,9 @@ def main(args):
     mic = PyAudioInput(sample_rate=args.sr, frame_width=args.fw)
     vad = VoiceActivityDetector()
     wake = WakewordTrigger(model_dir=args.models_dir)
+    timeout = ActivationTimeout(frame_width=args.fw)
 
-    pipeline = SpeechPipeline(mic, [vad, wake])
+    pipeline = SpeechPipeline(mic, [vad, wake, timeout])
     pipeline.start()
     pipeline.run()
 
