@@ -3,6 +3,7 @@ import numpy as np
 from tf_lite.tf_lite import TFLiteModel
 from tf_lite.ring_buffer import RingBuffer
 
+
 class Filter:
 
     def __init__(
@@ -35,10 +36,6 @@ class Filter:
         self._prev_sample: float = 0.0
 
     def filter_frame(self, frame) -> None:
-        # convert the PCM-16 audio to float32 in (-1.0, 1.0)
-        frame = frame.astype(np.float32) / (2 ** 15 - 1)
-        frame = np.clip(frame, -1.0, 1.0)
-
         # pull out a single value from the frame and apply pre-emphasis
         # with the previous sample then cache the previous sample
         # to be use in the next iteration
@@ -49,13 +46,15 @@ class Filter:
         # fill the sample window to analyze speech containing samples
         # after each window fill the buffer advances by the hop length
         # to produce an overlapping window
+        frame_features = []
         for sample in frame:
             self.sample_window.write(sample)
             if self.sample_window.is_full:
-                return self._analyze()
+                features = self._analyze()
+                frame_features.append(features.squeeze())
                 self.sample_window.rewind().seek(self.hop_length)
 
-        return None
+        return frame_features 
 
     def _analyze(self) -> None:
         # read the full contents of the sample window to calculate a single frame

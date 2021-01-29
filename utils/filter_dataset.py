@@ -63,7 +63,7 @@ class Dataset_Filter:
 
             # if frame buffer is not full, filter cannot do overlapping windows, so nothing is returned
             if frame is not None:
-                features.append(frame.squeeze())
+                features.extend(frame)
 
         return np.array(features)
 
