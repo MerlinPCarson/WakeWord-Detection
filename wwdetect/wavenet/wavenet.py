@@ -44,7 +44,7 @@ def build_wavenet_model(timesteps, num_mels):
     net = Add()(skip_connections)
     net = Activation('relu', name='SkipOut_ReLU')(net)
     net = Conv1D(32, 1, activation='relu', name='SkipOut_Conv1D_1')(net)
-    net = Conv1D(32, 1, name='SkipOut_Conv1D_2')(net)
+    net = Conv1D(1, 1, name='SkipOut_Conv1D_2')(net)
     net = Activation('softmax', name='SkipOut_Softmax')(net)
     #net = Flatten()(net)
     #net = Dense(input_size, activation='softmax')(net)

@@ -27,7 +27,7 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
 
         # load batch features and labels 
         X = [self.dataset[i]['features'] for i in batch]
-        y = [self.dataset[i]['label'] for i in batch]
+        y = np.array([self.dataset[i]['label'] for i in batch])
 
         # make each batch uniform length
         X = self.pad(X)
