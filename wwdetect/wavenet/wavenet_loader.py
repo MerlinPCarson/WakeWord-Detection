@@ -11,55 +11,54 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
         # state variables
         self.num_features = num_features
         self.batch_size = batch_size
-        self.batch_idx = 0
-        self.num_batches = len(self.dataset) // batch_size
+        self.num_batches = len(self.dataset) // batch_size #- 1
 
     def __len__(self):
         # returns the number of batches
-        return len(self.dataset) // self.batch_size
+        return self.num_batches 
 
     def __getitem__(self, index):
         # returns one batch
 
         # find which segments make up the batch
-        batch_start = self.batch_idx * self.batch_size
-        batch = np.arange(batch_start, batch_start + self.batch_size)
+        batch_start = self.batch_size * index 
+        batch_idxs = np.arange(batch_start, batch_start + self.batch_size)
 
         # load batch features and labels 
-        X = [self.dataset[i]['features'] for i in batch]
-        y = np.array([self.dataset[i]['label'] for i in batch])
+        X = [self.dataset[i]['features'] for i in batch_idxs]
+        y = np.array([self.dataset[i]['label'] for i in batch_idxs])
 
         # make each batch uniform length
-        X = self.pad(X)
+        X = self.pad_features(X)
 
         # increment batch number
-        self.batch_idx += 1
+        #self.batch_idx += 1
 
         return X, y
 
     def on_epoch_end(self):
         # option method to run some logic at the end of each epoch: e.g. reshuffling
         np.random.shuffle(self.dataset)
-        self.batch_idx = 0
 
-    def pad(self, X):
+    def pad_features(self, X):
+
         # create new datastruct of max length timesteps 
-        max_len = np.max([x.shape[0] for x in X])
-        padded_X = np.zeros((len(X), max_len, self.num_features), dtype=np.float32)
+        max_length = max([x.shape[0] for x in X])
+        X_padded = np.zeros((len(X), max_length, X[0].shape[-1]), dtype=np.float32)
 
         # pad features
-        for i, x in enumerate(X):
-            x = np.expand_dims(x, axis=0) 
-            padded_X[i, : x.shape[1], : ] 
-
-        return padded_X
+        for idx, features in enumerate(X):
+            features = np.expand_dims(features, 0)
+            X_padded[idx, :features.shape[1], :features.shape[2]] = features 
+        return X_padded 
 
     def preload_data(self, data_file):
 
         self.dataset = []
         print(f'pre-loading dataset from file {data_file}')
         with h5py.File(data_file, 'r') as h5:
-            for key in tqdm(h5.keys()):
+            keys = list(h5.keys())
+            for key in tqdm(keys):
                 self.dataset.append({'file_name': key, 
                                      'label': np.uint8(h5[key].attrs['is_hotword']),
                                      'start_speech': np.int16(h5[key].attrs['speech_start_ts']),
@@ -71,3 +70,4 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
 if __name__ == '__main__':
     data_file = 'data/test.h5'
     dataloader = HeySnipsDataset(data_file, 32)
+
