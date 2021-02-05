@@ -36,9 +36,11 @@ class WakewordTrigger:
         fft_hop_length: int = 10,
         model_dir: str = "",
         posterior_threshold: float = 0.5,
+        model_type: str = "default",
         **kwargs,
     ) -> None:
 
+        self.model_type: str = model_type
         self.pre_emphasis: float = pre_emphasis
         self.hop_length: int = int(fft_hop_length * sample_rate / 1000)
 
@@ -62,28 +64,60 @@ class WakewordTrigger:
         self._fft_window = np.hanning(self._window_size)
 
         # ------------------------------------------------------------------------
+        # Original RNN setup sent by Alireza.
+        if self.model_type == "default":
+            # retrieve the mel_length and mel_width based on the encoder model metadata
+            # these allocate the buffer to the correct size
+            self.mel_length: int = self.encode_model.input_details[0]["shape"][1]
+            self.mel_width: int = self.encode_model.input_details[0]["shape"][-1]
+
+            # initialize the first state input for autoregressive encoder model
+            # retrieve the encode_length and encode_width from the model detect_model
+            # metadata. We get the dimensions from the detect_model inputs because the
+            # encode_model runs autoregressively and outputs a single encoded sample.
+            # the detect_model input is a collection of these samples.
+            self.state = np.zeros(self.encode_model.input_details[1]["shape"], np.float32)
+            self.encode_length: int = self.detect_model.input_details[0]["shape"][1]
+            self.encode_width: int = self.detect_model.input_details[0]["shape"][-1]
+
+            self.sample_window: RingBuffer = RingBuffer(shape=[self._window_size])
+            self.frame_window: RingBuffer = RingBuffer(
+                shape=[self.mel_length, self.mel_width]
+            )
+            self.encode_window: RingBuffer = RingBuffer(
+                shape=[self.encode_length, self.encode_width]
+            )
+
+            # initialize the frame and encode windows with zeros
+            # this minimizes the delay caused by filling the buffer
+            self.frame_window.fill(0.0)
+            self.encode_window.fill(-1.0)
+        # ------------------------------------------------------------------------
         # For CRNN, take dimensions from the encoder, since it is a CNN which
         # expects a particular input shape. The RNN is embedded after the CNN,
         # and runs over the CNN output expressed as a sequence.
-        self.encode_length: int = self.encode_model.input_details[0]["shape"][1]
-        self.encode_width: int = self.encode_model.input_details[0]["shape"][-2]
+        elif self.model_type == "CRNN":
+            self.encode_length: int = self.encode_model.input_details[0]["shape"][1]
+            self.encode_width: int = self.encode_model.input_details[0]["shape"][-2]
 
-        self.decode_length: int = self.detect_model.input_details[0]["shape"][0]
-        self.decode_width: int = self.detect_model.input_details[0]["shape"][-1]
+            self.decode_length: int = self.detect_model.input_details[0]["shape"][0]
+            self.decode_width: int = self.detect_model.input_details[0]["shape"][-1]
 
 
-        self.sample_window: RingBuffer = RingBuffer(shape=[self._window_size])
-        self.frame_window: RingBuffer = RingBuffer(
-            shape=[self.encode_width, self.encode_length]
-        )
-        self.decode_window: RingBuffer = RingBuffer(
-            shape=[self.decode_length, self.decode_width]
-        )
+            self.sample_window: RingBuffer = RingBuffer(shape=[self._window_size])
+            self.frame_window: RingBuffer = RingBuffer(
+                shape=[self.encode_width, self.encode_length]
+            )
+            self.decode_window: RingBuffer = RingBuffer(
+                shape=[self.decode_length, self.decode_width]
+            )
 
-        # initialize the frame and encode windows with zeros
-        # this minimizes the delay caused by filling the buffer
-        self.frame_window.fill(0.0)
-        self.decode_window.fill(-1.0)
+            # initialize the frame and encode windows with zeros
+            # this minimizes the delay caused by filling the buffer
+            self.frame_window.fill(0.0)
+            self.decode_window.fill(-1.0)
+        else:
+            raise NotImplementedError
 
         self._posterior_threshold: float = posterior_threshold
         self._posterior_max: float = 0.0
@@ -112,7 +146,7 @@ class WakewordTrigger:
         # reset on vad fall deactivation
         if vad_fall:
             if not context.is_active:
-                _LOG.info(f"wake: {self._posterior_max}")
+                _LOG.info(f"resetting wake: {self._posterior_max}")
             self.reset()
 
     def _sample(self, context: SpeechContext, frame) -> None:
@@ -156,36 +190,64 @@ class WakewordTrigger:
         # accumulate filtered samples until size of encoding window
         self.frame_window.rewind().seek(1)
         self.frame_window.write(frame)
-
         # encode the mel spectrogram window
         self._encode(context)
 
     def _encode(self, context: SpeechContext) -> None:
-        # read the full contents of the frame window
-        frame = self.frame_window.read_all().T
-        frame = np.expand_dims(frame, 0)
 
-        # Adding channel dimension for CNN.
-        frame = np.expand_dims(frame, -1)
-        frame = np.array(self.encode_model(frame))
+        if self.model_type == "default":
+            # read the full contents of the frame window and add the batch dimension
+            # run the encoder and save the output state for autoregression
+            frame = self.frame_window.read_all()
+            frame = np.expand_dims(frame, 0)
+            frame, self.state = self.encode_model(frame, self.state)
 
-        # Send into detection window.
-        self.decode_window.rewind().seek(1)
-        self.decode_window.write(frame)
+            # accumulate encoded samples until size of detection window
+            self.encode_window.rewind().seek(1)
+            self.encode_window.write(frame)
+
+        elif self.model_type == "CRNN":
+            # read the full contents of the frame window
+            frame = self.frame_window.read_all().T
+            frame = np.expand_dims(frame, 0)
+
+            # Adding channel dimension for CNN.
+            frame = np.expand_dims(frame, -1)
+            frame = np.array(self.encode_model(frame))
+
+            # Send into detection window.
+            self.decode_window.rewind().seek(1)
+            self.decode_window.write(frame)
+        else:
+            raise NotImplementedError
+
         self._detect(context)
 
     def _detect(self, context: SpeechContext) -> None:
-        # pass encoder output into decoder and
-        # calculate a scalar probability of whether
-        # the frame contains the wakeword
-        frame = self.decode_window.read_all()
-        posterior = self.detect_model(frame)[0][0][0]
 
+        if self.model_type == "default":
+            # read the full contents of the encode window and add the batch dimension
+            # calculate a scalar probability of if the frame contains the wakeword
+            # with the detect model
+            frame = self.encode_window.read_all()
+            frame = np.expand_dims(frame, 0)
+        elif self.model_type == "CRNN":
+            # pass encoder output into decoder and
+            # calculate a scalar probability of whether
+            # the frame contains the wakeword
+            frame = self.decode_window.read_all()
+
+        posterior = self.detect_model(frame)[0][0][0]
+        print("")
+        print(posterior)
+        print(self._posterior_max)
+        print(self._posterior_threshold)
         if posterior > self._posterior_max:
             self._posterior_max = posterior
+
         if posterior > self._posterior_threshold:
             context.is_active = True
-            _LOG.info(f"wake: {self._posterior_max}")
+            _LOG.info(f"wakeword triggered: {self._posterior_max}")
 
     def reset(self) -> None:
         """ Resets the currect WakewordDetector state """
@@ -197,3 +259,4 @@ class WakewordTrigger:
     def close(self) -> None:
         """ Close interface for use in the pipeline """
         self.reset()
+
