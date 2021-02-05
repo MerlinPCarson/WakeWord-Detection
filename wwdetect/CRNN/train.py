@@ -3,6 +3,7 @@ import json
 from itertools import chain
 
 from tensorflow.keras import optimizers, metrics, losses
+from tensorflow.keras.callbacks import EarlyStopping
 from kerastuner.tuners import Hyperband
 from sklearn.metrics import balanced_accuracy_score
 import numpy as np
@@ -53,7 +54,6 @@ METRICS = [
 
 
 def eval_basics(model, partition, labels):
-
     # Prep data for sklearn metrics. Wish could just use the
     # data generator, but tricky to extract labels.
     samples = len(partition["test"])
@@ -113,10 +113,16 @@ def data_prep(data_path, preprocessed=True):
 
     return training_generator, dev_generator, test_generator, partition, labels
 
-def training_hypermodel(training_generator, dev_generator):
+def training_hypermodel(training_generator, dev_generator, early_stopping=False):
+    if early_stopping:
+      callbacks = EarlyStopping(monitor="val_loss", patience=6)
+    else:
+      callbacks = None
 
     def build_model(hp):
-        model = Arik_CRNN(n_c=N_C,
+        model = Arik_CRNN(input_features=INPUT_SHAPE_FEATURES,
+                          input_frames=INPUT_SHAPE_FRAMES,
+                          n_c=N_C,
                           l_t=L_T,
                           l_f=L_F,
                           s_t=S_T,
@@ -151,12 +157,19 @@ def training_hypermodel(training_generator, dev_generator):
 
     model = tuner.hypermodel.build(best_params)
     model.fit(x=training_generator,
-              epochs=20,
+              epochs=100,
               verbose=1,
               validation_data=dev_generator,
               use_multiprocessing=False)
+    model.save()
+    model.save_to_tflite()
 
-def training_basic(training_generator, dev_generator):
+def training_basic(training_generator, dev_generator, early_stopping=False):
+    if early_stopping:
+      callbacks = EarlyStopping(monitor="val_loss", patience=6)
+    else:
+      callbacks = None
+
     model = Arik_CRNN(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
                       N_C, L_T, L_F, S_T, S_F, R, N_R, N_F,
                       activation='relu')
@@ -164,17 +177,19 @@ def training_basic(training_generator, dev_generator):
     model.build(input_shape=(BATCH_SIZE, INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES, 1))
 
     model.fit(x=training_generator,
-              epochs=20,
+              epochs=100,
               verbose=1,
               validation_data=dev_generator,
-              use_multiprocessing=False)
+              use_multiprocessing=False,
+              callbacks = [callbacks])
+
     model.save()
     model.save_to_tflite()
     return model
 
 def main():
-    train, dev, test, partition, labels = data_prep("/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data")
-    model = training_basic(train, dev)
+    train, dev, test, partition, labels = data_prep("/content/machine-learning-data/wakeword_data_preprocessed")
+    model = training_hypermodel(train, dev, early_stopping=True)
     eval_basics(model, partition, labels)
 
 if __name__ == "__main__":

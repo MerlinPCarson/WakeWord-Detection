@@ -59,7 +59,7 @@ class Arik_CRNN(tf.keras.Model):
 
     def save_to_tflite(self):
         encode_converter = tf.lite.TFLiteConverter.from_keras_model(self.encoder)
-        detect_converter = tf.lite.TFLiteConverter.from_keras_model(self.decoder)
+        detect_converter = tf.lite.TFLiteConverter.from_keras_model(self.detect)
         tflite_encode_model = encode_converter.convert()
         tflite_detect_model = detect_converter.convert()
 
