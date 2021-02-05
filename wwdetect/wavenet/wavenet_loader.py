@@ -11,7 +11,7 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
         # state variables
         self.num_features = num_features
         self.batch_size = batch_size
-        self.num_batches = len(self.dataset) // batch_size #- 1
+        self.num_batches = len(self.dataset) // batch_size
 
     def __len__(self):
         # returns the number of batches
@@ -30,9 +30,6 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
 
         # make each batch uniform length
         X = self.pad_features(X)
-
-        # increment batch number
-        #self.batch_idx += 1
 
         return X, y
 
@@ -68,6 +65,7 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
         return self.dataset
 
 if __name__ == '__main__':
+    # Test Loader
     data_file = 'data/test.h5'
     dataloader = HeySnipsDataset(data_file, 32)
 
