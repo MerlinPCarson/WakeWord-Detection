@@ -6,9 +6,10 @@ import tensorflow as tf
 from tensorflow.keras.callbacks import Callback
 from scipy.io.wavfile import read, write
 from tensorflow.keras.models import Model, Sequential
+from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.layers import Conv1D, Flatten, Dense, \
     Input, Lambda, Activation, Multiply, Add, GlobalAveragePooling1D, \
-    BatchNormalization
+    GlobalMaxPooling1D, BatchNormalization
 
 
 def weighted_L1_loss(y_true, y_pred):
@@ -19,7 +20,7 @@ def weighted_L1_loss(y_true, y_pred):
 def wavenet_block(num_filters, filter_size, dilation_rate, layer_num):
     def f(input_):
         residual = input_
-        input_ = BatchNormalization()(input_)
+        #input_ = BatchNormalization()(input_)
         tanh_out = Conv1D(num_filters, filter_size, name=f'Tanh_{layer_num}_Dilation_{dilation_rate}',
                                         dilation_rate=dilation_rate,
                                         padding='causal',
@@ -36,7 +37,7 @@ def wavenet_block(num_filters, filter_size, dilation_rate, layer_num):
     return f
 
 
-def build_wavenet_model(num_timesteps, num_features):
+def build_wavenet_model(num_timesteps, num_features, learning_rate):
     input_ = Input(shape=(num_timesteps, num_features))
     net = Conv1D(16, 1, activation='relu', name='Features', padding='causal')(input_)
 
@@ -51,10 +52,15 @@ def build_wavenet_model(num_timesteps, num_features):
     net = Activation('relu', name='SkipOut_ReLU')(net)
     net = Conv1D(32, 1, activation='relu', name='SkipOut_Conv1D_1')(net)
     net = Conv1D(1, 1, name='SkipOut_Conv1D_2', activation='sigmoid')(net)
-    #net = Activation('sigmoid', name='SkipOut_Softmax')(net)
-    net = GlobalAveragePooling1D(name='Output')(net)
+    #net = GlobalAveragePooling1D(name='Output')(net)
+    net = GlobalMaxPooling1D(name='Output')(net)
     model = Model(inputs=input_, outputs=net)
-    model.compile(loss='binary_crossentropy', optimizer='adam',
+    model.compile(loss='binary_crossentropy', optimizer=Adam(learning_rate=learning_rate),
                   metrics=['accuracy'])
     model.summary()
     return model
+
+
+if __name__ == "__main__":
+    model = build_wavenet_model(None, 40)
+

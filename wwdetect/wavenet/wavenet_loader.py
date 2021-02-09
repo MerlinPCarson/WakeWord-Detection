@@ -33,6 +33,10 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
 
         return X, y
 
+    def number_of_examples(self):
+        # returns number of examples in dataset
+        return len(self.dataset)
+
     def on_epoch_end(self):
         # option method to run some logic at the end of each epoch: e.g. reshuffling
         np.random.shuffle(self.dataset)
