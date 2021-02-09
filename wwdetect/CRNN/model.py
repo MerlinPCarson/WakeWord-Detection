@@ -8,17 +8,22 @@ class Arik_CRNN(tf.keras.Model):
                        n_f, rnn_type="gru", dropout=0.0,
                        activation='relu'):
         super(Arik_CRNN, self).__init__()
+        # Input shape is (features, timestep/frames).
+        # Stride and kernel shape transposed from paper to match input shape.
+        #   kernel: (feature_dim, time_dim)
+        #   stride: (feature_dim, time_dim)
         self.pathname = "input_" + str(input_features) + "_" + str(input_frames) + "_" \
-                        + "conv_filt_" + str(n_c) + "_filt_size_" + str(l_t) + "_" + str(l_f) \
-                        + "_stride_" + str(s_t) + "_" + str(s_f) + "_rnn_layers_" + str(r) \
+                        + "conv_filt_" + str(n_c) + "_filt_size_" + str(l_f) + "_" + str(l_t) \
+                        + "_stride_" + str(s_f) + "_" + str(s_t) + "_rnn_layers_" + str(r) \
                         + "_rnn_units_" + str(n_r) + "_rnn_type_" + rnn_type + "_dropout_" \
                         + str(dropout) + "_activation_" + activation
         self.encoder = models.Sequential()
         self.encoder.add(layers.Conv2D(filters=n_c,
-                                       kernel_size=(l_t, l_f),
-                                       strides=(s_t, s_f),
+                                       kernel_size=(l_f, l_t),
+                                       strides=(s_f, s_t),
                                        activation=activation,
-                                       input_shape=(input_features, input_frames, 1)))
+                                       input_shape=(input_features, input_frames, 1),
+                                       data_format="channels_last"))
         # "Then a sequence of feature vectors is extracted from the feature maps produced by the
         # component of convolutional layers, which is the input for the recurrent layers. Specifically,
         # each feature vector of a feature sequence is generated from left to right on the feature maps
@@ -47,6 +52,7 @@ class Arik_CRNN(tf.keras.Model):
         self.detect.add(layers.Dense(units=n_f, activation='relu', input_shape=self.encoder.output_shape[1:]))
         self.detect.add(layers.Dropout(dropout))
         self.detect.add(layers.Dense(units=1, activation='sigmoid'))
+        print("pause")
 
     def call(self, inputs, training=False):
         x = self.encoder(inputs)

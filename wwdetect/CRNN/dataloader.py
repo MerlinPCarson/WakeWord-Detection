@@ -117,3 +117,27 @@ class HeySnips(Sequence):
     # Generate data
     X, y = self.__data_generation(list_IDs_temp)
     return X, y
+
+if __name__ == "__main__":
+    import glob
+    from itertools import chain
+
+    INPUT_SHAPE_FRAMES = 151
+    INPUT_SHAPE_FEATURES = 40
+    BATCH_SIZE = 64
+    data_path = "/content/machine-learning-data/wakeword_data_preprocessed"
+
+    partition={}
+    partition['train'] = glob.glob(data_path + "/train/*/*.npy")
+    partition['test'] = glob.glob(data_path + "/test/*/*.npy")
+    partition['dev'] = glob.glob(data_path + "/dev/*/*.npy")
+
+    all_ids = list(chain(*[ids for ids in partition.values()]))
+    labels = {id: (0 if "not-hey-snips" in id else 1) for id in all_ids}
+
+    training_generator = HeySnipsPreprocessed(partition['train'], labels, batch_size=BATCH_SIZE,
+                                              dim=(INPUT_SHAPE_FRAMES, INPUT_SHAPE_FEATURES))
+    dev_generator = HeySnipsPreprocessed(partition['dev'], labels, batch_size=BATCH_SIZE,
+                                         dim=(INPUT_SHAPE_FRAMES, INPUT_SHAPE_FEATURES))
+    test_generator = HeySnipsPreprocessed(partition['test'], labels, batch_size=BATCH_SIZE,
+                                          dim=(INPUT_SHAPE_FRAMES, INPUT_SHAPE_FEATURES))

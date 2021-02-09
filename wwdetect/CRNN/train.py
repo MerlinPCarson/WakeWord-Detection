@@ -26,7 +26,7 @@ S_F = 2                 # Stride (frequency dimension).
 
 # Recurrent layer(s) parameters:
 R = 2                   # Number of recurrent layers.
-N_R = 32                # Number of hidden units.
+N_R = 32                 # Number of hidden units.
 RNN_TYPE = "gru"        # Use GRU or LSTM for recurrent units.
 
 # Dense layer parameters:
@@ -34,7 +34,7 @@ N_F = 64                # Number of hidden units.
 
 # Training hyperparameters:
 OPTIMIZER = optimizers.Adam()
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 INITIAL_LR = 0.001
 DROPPED_LR = 0.0003
 
@@ -189,7 +189,7 @@ def training_basic(training_generator, dev_generator, early_stopping=False):
 
 def main():
     train, dev, test, partition, labels = data_prep("/content/machine-learning-data/wakeword_data_preprocessed")
-    model = training_hypermodel(train, dev, early_stopping=True)
+    model = training_basic(train, dev, early_stopping=True)
     eval_basics(model, partition, labels)
 
 if __name__ == "__main__":
