@@ -5,6 +5,7 @@ Training and evaluation scripts for wake word detection DNN models.
 * Tensorflow
 * Tqdm
 * Librosa
+* Sklearn
 
 # Dataset 
 ["hey-snips" research dataset](https://github.com/sonos/keyword-spotting-research-datasets) 
