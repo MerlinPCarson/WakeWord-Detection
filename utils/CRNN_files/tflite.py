@@ -10,6 +10,7 @@ import numpy as np  # type: ignore
 from spokestack.context import SpeechContext
 from spokestack.models.tensorflow import TFLiteModel
 from spokestack.ring_buffer import RingBuffer
+from spokestack.wakeword.wfst import smooth
 
 
 _LOG = logging.getLogger(__name__)
@@ -37,12 +38,14 @@ class WakewordTrigger:
         model_dir: str = "",
         posterior_threshold: float = 0.5,
         model_type: str = "default",
+        superframe_len: int = 10,
         **kwargs,
     ) -> None:
 
         self.model_type: str = model_type
         self.pre_emphasis: float = pre_emphasis
         self.hop_length: int = int(fft_hop_length * sample_rate / 1000)
+        self.superframe_len: int = superframe_len
 
         if fft_window_type != "hann":
             raise ValueError("Invalid fft_window_type")
@@ -62,6 +65,7 @@ class WakewordTrigger:
         # which makes the window size (post_fft_size - 1) * 2
         self._window_size = (self.filter_model.input_details[0]["shape"][-1] - 1) * 2
         self._fft_window = np.hanning(self._window_size)
+        self.superframe = []
 
         # ------------------------------------------------------------------------
         # Original RNN setup sent by Alireza.
@@ -103,7 +107,7 @@ class WakewordTrigger:
             self.decode_length: int = self.detect_model.input_details[0]["shape"][0]
             self.decode_width: int = self.detect_model.input_details[0]["shape"][-1]
 
-
+            print(self._window_size)
             self.sample_window: RingBuffer = RingBuffer(shape=[self._window_size])
             self.frame_window: RingBuffer = RingBuffer(
                 shape=[self.encode_width, self.encode_length]
@@ -186,7 +190,7 @@ class WakewordTrigger:
         # add the batch dimension and compute the mel spectrogram with filter model
         frame = np.expand_dims(frame, 0)
         frame = self.filter_model(frame)[0]
-
+        print(frame.shape)
         # accumulate filtered samples until size of encoding window
         self.frame_window.rewind().seek(1)
         self.frame_window.write(frame)
@@ -238,25 +242,46 @@ class WakewordTrigger:
             frame = self.decode_window.read_all()
 
         posterior = self.detect_model(frame)[0][0][0]
-        print("")
-        print(posterior)
-        print(self._posterior_max)
-        print(self._posterior_threshold)
-        if posterior > self._posterior_max:
-            self._posterior_max = posterior
+        # print("")
+        # print(posterior)
+        # print(self._posterior_max)
+        # print(self._posterior_threshold)
+        # if posterior > self._posterior_max:
+        #     self._posterior_max = posterior
 
-        if posterior > self._posterior_threshold:
-            context.is_active = True
-            _LOG.info(f"wakeword triggered: {self._posterior_max}")
+        # Converting single/sigmoidal posterior
+        # to posterior per state.
+        post_ww = posterior
+        post_other = np.abs(posterior - 1)
+        self.superframe.append([post_other,post_ww])
+        if len(self.superframe) == self.superframe_len:
+            smoothed = smooth(self.superframe)
+            if "wakeword" in smoothed:
+                context.is_active = True
+                print(self.superframe)
+                _LOG.info(f"wakeword triggered: {smoothed}")
+            self.superframe = []
+
+        # if posterior > self._posterior_threshold:
+        #     context.is_active = True
+        #     _LOG.info(f"wakeword triggered: {self._posterior_max}")
 
     def reset(self) -> None:
         """ Resets the currect WakewordDetector state """
-        self.sample_window.reset()
-        self.frame_window.reset().fill(0.0)
-        self.decode_window.reset().fill(-1.0)
-        self._posterior_max = 0.0
+        if self.model_type == "default":
+            self.sample_window.reset()
+            self.frame_window.reset().fill(0.0)
+            self.encode_window.reset().fill(-1.0)
+            self.state[:] = 0.0
+            self._posterior_max = 0.0
+        elif self.model_type == "CRNN":
+            self.sample_window.reset()
+            self.frame_window.reset().fill(0.0)
+            self.decode_window.reset().fill(-1.0)
+            self._posterior_max = 0.0
+
+
 
     def close(self) -> None:
         """ Close interface for use in the pipeline """
         self.reset()
-
