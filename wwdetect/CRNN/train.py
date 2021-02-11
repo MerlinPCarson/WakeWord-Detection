@@ -2,14 +2,19 @@ import glob
 import json
 from itertools import chain
 
+from tensorflow.random import set_seed
 from tensorflow.keras import optimizers, metrics, losses
-from tensorflow.keras.callbacks import EarlyStopping
+from tensorflow.keras.callbacks import EarlyStopping, \
+                                       ReduceLROnPlateau, \
+                                       ModelCheckpoint
 from kerastuner.tuners import Hyperband
 from sklearn.metrics import balanced_accuracy_score
 import numpy as np
 
 from model import Arik_CRNN
 from dataloader import HeySnipsPreprocessed
+
+set_seed(42)
 
 # Parameters as defined in Arik et al (set to best performing in paper).
 # Note: preprocessed files using filter_dataset.py use frame widths of 20ms,
@@ -86,6 +91,8 @@ def data_prep(data_path, preprocessed=True):
         partition['test'] = glob.glob(data_path + "/test/*/*.npy")
         partition['dev'] = glob.glob(data_path + "/dev/*/*.npy")
 
+        print(len(partition["train"]))
+        print(len(partition["dev"]))
         all_ids = list(chain(*[ids for ids in partition.values()]))
         labels = {id: (0 if "not-hey-snips" in id else 1) for id in all_ids}
 
@@ -165,8 +172,14 @@ def training_hypermodel(training_generator, dev_generator, early_stopping=False)
     model.save_to_tflite()
 
 def training_basic(training_generator, dev_generator, early_stopping=False):
+    print(len(training_generator))
+    print(len(dev_generator))
     if early_stopping:
-      callbacks = EarlyStopping(monitor="val_loss", patience=6)
+      callbacks = [EarlyStopping(monitor="val_loss", patience=6),
+                   ReduceLROnPlateau(monitor="val_loss", patience=3,
+                                     factor=0.03, min_lr=DROPPED_LR),
+                   ModelCheckpoint(filepath="best", save_best_only=True,
+                                   monitor="val_loss", mode="min")]
     else:
       callbacks = None
 
@@ -183,12 +196,13 @@ def training_basic(training_generator, dev_generator, early_stopping=False):
               use_multiprocessing=False,
               callbacks = [callbacks])
 
+    model.load_weights("best")
     model.save()
     model.save_to_tflite()
     return model
 
 def main():
-    train, dev, test, partition, labels = data_prep("/content/machine-learning-data/wakeword_data_preprocessed")
+    train, dev, test, partition, labels = data_prep("/content/machine-learning-data/wakeword_data_preprocessed/")
     model = training_basic(train, dev, early_stopping=True)
     eval_basics(model, partition, labels)
 

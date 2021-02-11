@@ -17,13 +17,14 @@ class Arik_CRNN(tf.keras.Model):
                         + "_stride_" + str(s_f) + "_" + str(s_t) + "_rnn_layers_" + str(r) \
                         + "_rnn_units_" + str(n_r) + "_rnn_type_" + rnn_type + "_dropout_" \
                         + str(dropout) + "_activation_" + activation
-        self.encoder = models.Sequential()
+        self.encoder = models.Sequential(name="encoder")
         self.encoder.add(layers.Conv2D(filters=n_c,
                                        kernel_size=(l_f, l_t),
                                        strides=(s_f, s_t),
                                        activation=activation,
                                        input_shape=(input_features, input_frames, 1),
-                                       data_format="channels_last"))
+                                       data_format="channels_last",
+                                       padding="same"))
         # "Then a sequence of feature vectors is extracted from the feature maps produced by the
         # component of convolutional layers, which is the input for the recurrent layers. Specifically,
         # each feature vector of a feature sequence is generated from left to right on the feature maps
@@ -48,10 +49,10 @@ class Arik_CRNN(tf.keras.Model):
             self.encoder.add(layers.Bidirectional(layers.GRU(units=n_r, activation='tanh', return_sequences=False)))
         elif rnn_type == 'lstm':
             self.encoder.add(layers.Bidirectional(layers.LSTM(units=n_r, activation='tanh', return_sequences=False)))
-        self.detect = models.Sequential()
+        self.detect = models.Sequential(name="detector")
         self.detect.add(layers.Dense(units=n_f, activation='relu', input_shape=self.encoder.output_shape[1:]))
         self.detect.add(layers.Dropout(dropout))
-        self.detect.add(layers.Dense(units=1, activation='sigmoid'))
+        self.detect.add(layers.Dense(units=2, activation='softmax'))
         print("pause")
 
     def call(self, inputs, training=False):
