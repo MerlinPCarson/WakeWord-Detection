@@ -3,8 +3,9 @@ import numpy as np
 from tqdm import tqdm
 import tensorflow as tf
 
+
 class HeySnipsDataset(tf.keras.utils.Sequence):
-    def __init__(self, data_file, batch_size = 32, num_features = 40, *args, **kwargs):
+    def __init__(self, data_file, batch_size = 32, num_features = 40, test = False, shuffle=True, *args, **kwargs):
         # dataset pre-fetch
         self.dataset = self.preload_data(data_file)
 
@@ -12,6 +13,7 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
         self.num_features = num_features
         self.batch_size = batch_size
         self.num_batches = len(self.dataset) // batch_size
+        self.shuffle = shuffle
 
     def __len__(self):
         # returns the number of batches
@@ -33,13 +35,21 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
 
         return X, y
 
+    def get_labels(self):
+        assert not self.shuffle, "Order may not be correct due to shuffling being enabled"
+        labels = []
+        for i in range(self.number_of_examples()):
+            labels.append(self.dataset[i]['label'])
+        return labels 
+
     def number_of_examples(self):
         # returns number of examples in dataset
         return len(self.dataset)
 
     def on_epoch_end(self):
         # option method to run some logic at the end of each epoch: e.g. reshuffling
-        np.random.shuffle(self.dataset)
+        if self.shuffle:
+            np.random.shuffle(self.dataset)
 
     def pad_features(self, X):
 
