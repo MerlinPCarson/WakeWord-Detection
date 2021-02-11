@@ -2,3 +2,5 @@ librosa==0.8.0
 numpy==1.19.5
 tensorflow==2.4.0
 tqdm==4.55.1
+pynini==2.0.8
+graphviz==0.16
