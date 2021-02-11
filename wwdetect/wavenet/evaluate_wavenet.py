@@ -11,10 +11,6 @@ from wavenet import build_wavenet_model
 from wavenet_loader import HeySnipsDataset 
 from train_wavenet import parse_args
 
-# surpress TF warnings
-import tensorflow as tf
-tf.get_logger().setLevel(2)
-
 
 def main(args):
     start = time.time()
