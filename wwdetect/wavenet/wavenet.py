@@ -64,7 +64,6 @@ def wavenet_block(num_filters, filter_size, dilation_rate, layer_num, args, init
 
     return f
 
-
 def build_wavenet_model(args, initializer='glorot_normal'):
     input_ = Input(shape=(args.timesteps, args.num_features))
 
@@ -86,10 +85,11 @@ def build_wavenet_model(args, initializer='glorot_normal'):
     net = Activation('relu', name='SkipOut_ReLU')(net)
     net = Conv1D(32, 1, activation='relu', name='SkipOut_Conv1D_1', kernel_initializer=initializer, 
                  kernel_regularizer=l2(args.l2), bias_regularizer=l2(args.l2))(net)
-    net = Conv1D(1, 1, name='SkipOut_Conv1D_2', activation='sigmoid', kernel_initializer=initializer)(net)
+    net = Conv1D(2, 1, name='SkipOut_Conv1D_2', kernel_initializer=initializer)(net)
     net = GlobalMaxPooling1D(name='Output')(net)
+    net = Activation('softmax', name='Softmax')(net)
     model = Model(inputs=input_, outputs=net)
-    model.compile(loss='binary_crossentropy', optimizer=Adam(learning_rate=args.lr),
+    model.compile(loss='sparse_categorical_crossentropy', optimizer=Adam(learning_rate=args.lr),
                   metrics=['accuracy'])
     model.summary()
     return model
