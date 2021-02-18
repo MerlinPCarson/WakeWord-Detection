@@ -4,7 +4,8 @@ import time
 import argparse
 import numpy as np
 import tensorflow as tf
-from wavenet import build_wavenet_model
+#from wavenet import build_wavenet_model
+from wavenet_model import build_wavenet_model
 from wavenet_loader import HeySnipsDataset 
 
 
@@ -58,7 +59,7 @@ def main(args):
     early_stopping = tf.keras.callbacks.EarlyStopping(patience=args.patience, verbose=1)
 
     model_chkpt = tf.keras.callbacks.ModelCheckpoint(filepath=os.path.join(args.model_dir, 'wavenet_model'),
-                                                     save_best_only=True, verbose=1)
+                                                     save_best_only=True, save_weights_only=True, verbose=1)
 
     # train model
     model.fit(trainset, epochs=args.epochs, validation_data=valset, 
