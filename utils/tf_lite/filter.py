@@ -35,10 +35,6 @@ class Filter:
         self._prev_sample: float = 0.0
 
     def filter_frame(self, frame) -> None:
-        # convert the PCM-16 audio to float32 in (-1.0, 1.0)
-        frame = frame.astype(np.float32) / (2 ** 15 - 1)
-        frame = np.clip(frame, -1.0, 1.0)
-
         # pull out a single value from the frame and apply pre-emphasis
         # with the previous sample then cache the previous sample
         # to be use in the next iteration
