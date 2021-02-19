@@ -91,20 +91,6 @@ class wavenet(tf.keras.Model):
         x = self.detect(x)
         return x
     
-    def build_wavenet(self, args):
-
-        inputs = Input(shape=(args.timesteps, args.num_features))
-
-        outputs = self.encoder(inputs)
-        outputs = self.detect(outputs)
-
-        model = Model(inputs=inputs, outputs=outputs, name='Wavenet')
-        model.compile(loss='binary_crossentropy', optimizer=Adam(learning_rate=args.lr),
-                  metrics=['accuracy'])
-        model.summary()
-
-        return model
-
     def build_encoder(self, args):
 
         inputs = Input(shape=(args.timesteps, args.num_features))
@@ -163,7 +149,7 @@ def build_wavenet_model(args):
     model = wavenet(args)
     model.compile(loss='sparse_categorical_crossentropy', optimizer=Adam(learning_rate=args.lr),
             metrics=['accuracy'])
-    model.build(input_shape=(None, None, 40))
+    model.build(input_shape=(None, args.timesteps, args.num_features))
     model.summary()
 
     return model
