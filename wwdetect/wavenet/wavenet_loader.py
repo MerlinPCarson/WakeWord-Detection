@@ -5,9 +5,11 @@ import tensorflow as tf
 
 
 class HeySnipsDataset(tf.keras.utils.Sequence):
-    def __init__(self, data_file, batch_size = 32, num_features = 40, test = False, shuffle=True, *args, **kwargs):
+    def __init__(self, data_file, batch_size=32, num_features=40, 
+                 shuffle=False, *args, **kwargs):
+
         # dataset pre-fetch
-        self.dataset = self.preload_data(data_file)
+        self.dataset, self.num_wakewords = self.preload_data(data_file)
 
         # state variables
         self.num_features = num_features
@@ -34,6 +36,36 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
         X = self.pad_features(X)
 
         return X, y
+
+    def prune_wakewords(self, keep_ratio):
+
+        # find indexes of all wakewords in dataset
+        wakeword_idxs = []
+        for i in range(len(self.dataset)):
+            if self.dataset[i]['label'] == 1:
+                wakeword_idxs.append(i)
+
+        # move wakewords to new datastruct
+        # must be done in reversed order or idxs won't match up as they are removed
+        wakewords = []
+        for i in reversed(wakeword_idxs):
+            # copy example to new list
+            wakewords.append(self.dataset[i])
+
+            # delete example from original dataset to not keep duplicates
+            del self.dataset[i]
+
+        # shuffle so removal is not order dependent
+        np.random.shuffle(wakewords)
+
+        # discard 1-keep_ratio of wakeword examples from datset
+        self.dataset = self.dataset + wakewords[:int(keep_ratio*self.num_wakewords)]
+
+        # reshuffle dataset so wakewords are not at the end
+        np.random.shuffle(self.dataset)
+
+        # set new number of batchs in dataset
+        self.num_batches = len(self.dataset) // self.batch_size
 
     def get_labels(self):
         assert not self.shuffle, "Order may not be correct due to shuffling being enabled"
@@ -66,6 +98,7 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
     def preload_data(self, data_file):
 
         self.dataset = []
+        self.num_wakewords = 0
         print(f'pre-loading dataset from file {data_file}')
         with h5py.File(data_file, 'r') as h5:
             keys = list(h5.keys())
@@ -76,10 +109,14 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
                                      'end_speech': np.int16(h5[key].attrs['speech_end_ts']),
                                      'features': np.array(h5[key][()], dtype=np.float32)})
 
-        return self.dataset
+                # count number of wakewords in dataset
+                if h5[key].attrs['is_hotword'] == 1:
+                    self.num_wakewords += 1
+
+        return self.dataset, self.num_wakewords
 
 if __name__ == '__main__':
     # Test Loader
     data_file = 'data/test.h5'
-    dataloader = HeySnipsDataset(data_file, 32)
+    dataloader = HeySnipsDataset(data_file)
 

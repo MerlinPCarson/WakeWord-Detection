@@ -155,14 +155,10 @@ def build_wavenet_model(args):
     return model
 
 if __name__ == "__main__":
-    from tensorflow.keras.models import load_model
-    import argparse
     from train_wavenet import parse_args
     print('parsing args')
     args = parse_args()
     print(args)
     model = build_wavenet_model(args)
-    model.load_weights(os.path.join(args.model_dir, 'wavenet_model'))
-    #model.encoder.load_weights('models2/wavenet_model.data-00000-of-00002')
-    #model.detect.load_weights('models2/wavenet_model.data-00001-of-00002')
+    model.load_weights(os.path.join(args.model))
 
