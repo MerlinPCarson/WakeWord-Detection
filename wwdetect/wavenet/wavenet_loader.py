@@ -69,10 +69,11 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
 
     def get_labels(self):
         assert not self.shuffle, "Order may not be correct due to shuffling being enabled"
-        labels = []
-        for i in range(self.number_of_examples()):
-            labels.append(self.dataset[i]['label'])
-        return labels 
+        return [self.dataset[i]['label'] for i in range(self.number_of_examples())]
+
+    def get_filenames(self):
+        assert not self.shuffle, "Order may not be correct due to shuffling being enabled"
+        return [self.dataset[i]['file_name'] for i in range(self.number_of_examples())]
 
     def number_of_examples(self):
         # returns number of examples in dataset

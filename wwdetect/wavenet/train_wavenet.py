@@ -71,6 +71,9 @@ def parse_args():
     parser.add_argument('--seed', type=int, default=9999, help='Random seed for training')
     parser.add_argument('--eval_models', type=str, default='models/wavenet_model', 
                                     help='Location of model to evaluate (use comma seperated list to evaluate multiple models)')
+    parser.add_argument('--audio_dir', type=str, default='data/hey_snips_research_6k_en_train_eval_clean_ter/audio_files', 
+                                    help='Location of datasets raw audio files')
+    parser.add_argument('--zip_missed', action='store_true', help='Save misclassified wavs to zip file after evaluation')
     parser.add_argument('--wakeword_min_keep_ratio', type=float, default=0.1, help='Minimum wakeword keep ratio')
     parser.add_argument('--wakeword_max_keep_ratio', type=float, default=1.0, help='Maximum wakeword keep ratio')
     parser.add_argument('--wakeword_keep_ratio_step', type=float, default=0.1, help='Wakeword keep ratio step from minimum to maximum')
