@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import pickle
 import random
 import argparse
 import numpy as np
@@ -50,8 +51,10 @@ def train(trainset, valset, args):
                                                      save_weights_only=True, verbose=1)
 
     # train model
-    model.fit(trainset, epochs=args.epochs, validation_data=valset, 
+    history = model.fit(trainset, epochs=args.epochs, validation_data=valset, 
               callbacks=[reduce_lr, early_stopping, model_chkpt])
+    print(history.history)
+    pickle.dump(history.history, open(args.model + '.npy', 'wb'))
 
 
 def parse_args():
@@ -69,8 +72,10 @@ def parse_args():
     parser.add_argument('--num_features', type=float, default=40, help='Number of features per-timestep')
     parser.add_argument('--timesteps', type=int, default=None, help='Number of timesteps per example, None for variable length')
     parser.add_argument('--seed', type=int, default=9999, help='Random seed for training')
-    parser.add_argument('--eval_models', type=str, default='models/wavenet_model', 
+    parser.add_argument('--eval_model', type=str, default='model/wavenet_model', 
                                     help='Location of model to evaluate (use comma seperated list to evaluate multiple models)')
+    parser.add_argument('--eval_file', type=str, default=None, 
+                                    help='Location of file that contains experiment metadata')
     parser.add_argument('--audio_dir', type=str, default='data/hey_snips_research_6k_en_train_eval_clean_ter/audio_files', 
                                     help='Location of datasets raw audio files')
     parser.add_argument('--zip_missed', action='store_true', help='Save misclassified wavs to zip file after evaluation')

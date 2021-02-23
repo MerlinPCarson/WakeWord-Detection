@@ -78,6 +78,10 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
     def number_of_examples(self):
         # returns number of examples in dataset
         return len(self.dataset)
+    
+    def number_of_wakewords(self):
+        # returns number of wakewords in test set (does not account for pruning)
+        return self.num_wakewords
 
     def on_epoch_end(self):
         # option method to run some logic at the end of each epoch: e.g. reshuffling

@@ -14,6 +14,13 @@ from wavenet_loader import HeySnipsDataset
 from train_wavenet import parse_args
 
 
+def experiment_models(exp_file):
+    # load experiment model names from experiment metadata 
+    exps = pickle.load(open(exp_file,'rb'))
+    base_name = os.path.join(os.path.dirname(exp_file), exps['model_name'])
+    eval_models = [f'{base_name}_{exp}' for exp in exps['keep_ratios']]
+    return eval_models, exps['num_wakeword']
+
 def evaluate_model(model, testset, zip_missed=False):
     preds = model.predict(testset, verbose=1)
     targets = testset.get_labels()
@@ -48,7 +55,7 @@ def evaluate_model(model, testset, zip_missed=False):
     return results
 
 def evaluate(testset, args):
-    print(args.zip_missed)
+
     # create model and load weights
     model = build_wavenet_model(args)
     model.load_weights(args.eval_model)
@@ -62,7 +69,7 @@ def evaluate(testset, args):
 
 def misclassified_audio_files(targets, preds, file_names):
 
-    assert len(targets) == len(preds) == len(file_names), 
+    assert len(targets) == len(preds) == len(file_names), \
                 'mismatch between lengths of targets, preds, file names'
 
     fp_files = [f'{file_names[i]}.wav' for i, val in enumerate(targets)
@@ -92,8 +99,13 @@ def main(args):
 
     print(f'{testset.number_of_examples()} testing examples')
 
-    # evaluate each model in comma seperated list
-    eval_models = args.eval_models.split(',')
+    if not args.eval_file:
+        # evaluate each model in comma seperated list
+        eval_models = args.eval_model.split(',')
+    else:
+        # load model names from experiment metadata file
+        eval_models, _ = experiment_models(args.eval_file)
+
     for model in eval_models:
         print(f'Evaluating model {model}')
         args.eval_model = model
