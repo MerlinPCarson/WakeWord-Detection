@@ -3,6 +3,7 @@ import numpy as np
 from tf_lite.tf_lite import TFLiteModel
 from tf_lite.ring_buffer import RingBuffer
 
+
 class Filter:
 
     def __init__(
@@ -45,13 +46,15 @@ class Filter:
         # fill the sample window to analyze speech containing samples
         # after each window fill the buffer advances by the hop length
         # to produce an overlapping window
+        frame_features = []
         for sample in frame:
             self.sample_window.write(sample)
             if self.sample_window.is_full:
-                return self._analyze()
+                features = self._analyze()
+                frame_features.append(features.squeeze())
                 self.sample_window.rewind().seek(self.hop_length)
 
-        return None
+        return frame_features 
 
     def _analyze(self) -> None:
         # read the full contents of the sample window to calculate a single frame
@@ -74,3 +77,4 @@ class Filter:
     def num_outputs(self) -> None:
         # return number of output features from model
         return self.filter_model.output_details[0]["shape"][-1]
+
