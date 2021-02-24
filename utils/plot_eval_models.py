@@ -75,15 +75,8 @@ def process_results(results, num_wakewords, total_duration_hrs):
         # CRNN
         thresholds = np.arange(0.98,0.99999,0.0005)
 
-        # CRNN
+        # all thresholds 
         thresholds = np.arange(0.5,0.99999,0.005)
-
-        # 99.89
-        #thresholds = np.arange(0.65,0.999,0.0005)
-        # 99.13
-        #thresholds = np.arange(0.995,0.999999,0.00005)
-        # 99.14
-        #thresholds = np.arange(0.75,0.998,0.0005)
 
         FRR = []
         FAR = []
