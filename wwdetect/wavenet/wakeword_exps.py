@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import pickle
 import random
 import argparse
 import numpy as np
@@ -35,6 +36,13 @@ def main(args):
 
     # ratio of wakewords in dataset to use for training, iterating from max to min by step
     keep_ratios = np.arange(min_wakeword_ratio, max_wakeword_ratio+wakeword_ratio_step/10, wakeword_ratio_step)
+
+    exps = {'model_name': os.path.basename(args.model), 'keep_ratios': [f'{keep_ratio:0.2f}' for keep_ratio in keep_ratios],
+            'num_wakeword': [int(trainset.number_of_wakewords() * keep_ratio) for keep_ratio in keep_ratios]}
+
+    # saving experiment info
+    pickle.dump(exps, open(f'{args.model}-exps.npy', 'wb'))
+
     print(f'Conducting training for models with wakeword keep ratios of: {keep_ratios}')
     for keep_ratio in reversed(keep_ratios):
 
@@ -51,6 +59,8 @@ def main(args):
         # train the model with the keep ratio
         train(trainset, valset, args)
 
+    
+    
     print(f'Script completed in {time.time()-start:.2f} secs')
 
     return 0
