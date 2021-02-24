@@ -34,9 +34,9 @@ class Dataset_Preprocessor:
         self.sr = kwargs['sample_rate']
         self.out_dir = kwargs['out_dir']
         self.data_dir = kwargs['data_dir']
-        self.train_meta = json.load(open(self.data_dir + "train.json", 'r'))
-        self.dev_meta = json.load(open(self.data_dir + "dev.json", 'r'))
-        self.test_meta = json.load(open(self.data_dir + "test.json", 'r'))
+        self.train_meta = json.load(open(self.data_dir + "/train.json", 'r'))
+        self.dev_meta = json.load(open(self.data_dir + "/dev.json", 'r'))
+        self.test_meta = json.load(open(self.data_dir + "/test.json", 'r'))
 
         if not Path(self.out_dir + "/audio_files/").exists():
             os.makedirs(self.out_dir + "/audio_files/")
@@ -205,12 +205,12 @@ class Dataset_Preprocessor:
                 else:
                     pos_samples_reduced = pos_samples[num_samples_to_remove:]
                     new_neg_samples = np.append(neg_samples[:num_samples_to_remove],pos_samples_reduced)
-                sf.write(enhanced_out_path + save_path, new_neg_samples, self.sr)
+                sf.write(self.out_dir + "enhanced_train_negative/" + save_path, new_neg_samples, self.sr)
 
                 # Add metadata to be written out as json file.
                 enhanced_meta.append({'duration': len(new_neg_samples) / self.sr,
                                       'worker_id': 'n_a',
-                                      'audio_file_path': enhanced_out_path + save_path,
+                                      'audio_file_path': "enhanced_train_negative/" + save_path,
                                       'id': Path(save_path).stem,
                                       'is_hotword': 0})
         # Write out metadata.
@@ -238,7 +238,7 @@ def main(args) -> int:
     start = time.time()
 
     dataset_preprocessor = Dataset_Preprocessor(**vars(args))
-    dataset_preprocessor.isolate_speech(args.out_dir)
+    #dataset_preprocessor.isolate_speech()
     dataset_preprocessor.reload_metadata(args.out_dir)
     dataset_preprocessor.enhance_train_set(original_path=args.out_dir)
 
