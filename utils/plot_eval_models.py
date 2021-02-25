@@ -6,15 +6,18 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 
+from scipy.signal import medfilt
 from evaluate_models import testset_files, duration_test
 
 def plot_FRR_FAR(results):
     
     fig, ax = plt.subplots(1,2)
+    ax[0].set_xlabel("Posterior Threshold")
     ax[0].set_ylabel("False Rejection Rate")
     ax[0].set_facecolor('lightgray')
     ax[0].grid(color='white')
 
+    ax[1].set_xlabel("Posterior Threshold")
     ax[1].set_ylabel("False Accepts per Hour")
     ax[1].set_facecolor('lightgray')
     ax[1].grid(color='white')
@@ -24,7 +27,6 @@ def plot_FRR_FAR(results):
         ax[0].plot(results[model]['thresholds'], results[model]['FRR'], label=model)
         ax[1].plot(results[model]['thresholds'], results[model]['FAR'], label=model)
 
-    plt.xlabel("Posterior Threshold")
     plt.legend()
     plt.tight_layout()
     plt.show()
@@ -32,7 +34,8 @@ def plot_FRR_FAR(results):
     fig, ax = plt.subplots(1,1)
     ax.set_facecolor('lightgray')
     for model in results:
-        plt.plot(results[model]['FAR'], results[model]['FRR'], label=model)
+        plt.plot(results[model]['FAR'], results[model]['FRR'], 
+                 label=f"{model} thresholds: {{{results[model]['thresholds'][0]:.2f},..,{results[model]['thresholds'][-1]:.3f}}}")
 
     plt.xlabel("False Alarms per Hour")
     plt.ylabel("False Rejection Rate")
@@ -51,7 +54,11 @@ def load_model_preds(model_types, results_dir):
 
     for model, result_dir in zip(model_types, results_dir):
         results[model]['wakeword'] = pickle.load(open(os.path.join(result_dir, f'{model}_all_wakeword.pkl'),'rb'))
+        #results[model]['smooth_wakeword'] =  np.convolve(results[model]['wakeword'], np.ones((30,))/30, mode='same')
+        #results[model]['smooth_wakeword'] =  medfilt(results[model]['wakeword'], kernel_size=31) 
         results[model]['not_wakeword'] = pickle.load(open(os.path.join(result_dir, f'{model}_no_wakeword.pkl'), 'rb'))
+        #results[model]['smooth_not_wakeword'] =  np.convolve(results[model]['not_wakeword'], np.ones((30,))/30, mode='same')
+        #results[model]['smooth_not_wakeword'] =  medfilt(results[model]['not_wakeword'], kernel_size=31) 
 
     return results
 
@@ -72,11 +79,14 @@ def threshold_accepts(posteriors, threshold):
 def process_results(results, num_wakewords, total_duration_hrs):
 
     for model in results:
-        # CRNN
-        thresholds = np.arange(0.98,0.99999,0.0005)
 
-        # all thresholds 
-        thresholds = np.arange(0.5,0.99999,0.005)
+        if model == 'CRNN':
+            # CRNN
+            thresholds = np.arange(0.98,0.99999,0.0005)
+
+        else:
+            # all thresholds 
+            thresholds = np.arange(0.5,0.99999,0.005)
 
         FRR = []
         FAR = []
