@@ -77,3 +77,4 @@ class Filter:
     def num_outputs(self) -> None:
         # return number of output features from model
         return self.filter_model.output_details[0]["shape"][-1]
+

@@ -2,6 +2,11 @@ librosa==0.8.0
 numpy==1.19.5
 tensorflow==2.4.0
 tqdm==4.55.1
+sklearn-learn==0.22.1
+matplotlib==2.1.2
+h5py==2.10.0
+webrtcvad==2.0.10
 pynini==2.0.8
 graphviz==0.16
+pydub
 keras-tuner
