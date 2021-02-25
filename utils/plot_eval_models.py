@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 #from scipy.signal import medfilt
-from evaluate_models import testset_files, duration_test
+from evaluate_models import testset_files, duration_audio
 
 def plot_FRR_FAR(results):
     
@@ -76,14 +76,13 @@ def threshold_accepts(posteriors, threshold):
 
     return accepts
 
-def process_results(results, num_wakewords, total_duration_hrs):
+def process_results(results, num_wakewords, not_wakeword_duration_hrs):
 
     for model in results:
 
         if model == 'CRNN':
             # CRNN
             thresholds = np.arange(0.98,0.99999,0.0005)
-
         else:
             # all thresholds 
             thresholds = np.arange(0.5,0.99999,0.005)
@@ -103,7 +102,7 @@ def process_results(results, num_wakewords, total_duration_hrs):
 
             # measure false positives
             accepts = threshold_accepts(results[model]['not_wakeword'], threshold)
-            accepts_rate = accepts / total_duration_hrs 
+            accepts_rate = accepts / not_wakeword_duration_hrs 
             FAR.append(accepts_rate)
 
         results[model]['FRR'] = FRR
@@ -142,16 +141,15 @@ def main(args):
     model_preds = load_model_preds(model_types, [args.results_dir_crnn, args.results_dir_wavenet])
 
     # create paths to evaluation wav files
-    FRR_path = os.path.join(args.eval_dir, args.pos_samples)
     FAR_path = os.path.join(args.eval_dir, args.neg_samples)
 
-    # get total duration
-    print('Calculating total duration of test set')
-    total_duration_hrs = duration_test(FRR_path, FAR_path, args.sample_rate)/3600
-    print(f'Total duration of evaluation set is {total_duration_hrs:.2f} hrs')
+    # get duration of not wakeword test audio
+    print('Calculating duration of non-wakeword audio')
+    not_wakeword_duration_hrs = duration_audio(FAR_path, args.sample_rate)/3600
+    print(f'Duration of non-wakeword audio is {not_wakeword_duration_hrs:.2f} hrs')
 
     # get FRR and FAR results for each model
-    results = process_results(model_preds, num_wakewords, total_duration_hrs)
+    results = process_results(model_preds, num_wakewords, not_wakeword_duration_hrs)
 
     # plot the FRR by FAR
     plot_FRR_FAR(results)
