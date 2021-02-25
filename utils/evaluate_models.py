@@ -39,8 +39,8 @@ def evaluate_FRR_full_pipeline(model_type="CRNN", test_file="data/evaluation/hey
     pipeline.run()
 
 
-def get_posterior(models_dir, model_type, test_file, frame_width,
-                  sample_rate):
+def get_posterior(models_dir, model_type, eval_type,
+                  test_files, frame_width, sample_rate):
 
     filter = Filter(model_dir=models_dir)
     encode_model: TFLiteModel = TFLiteModel(
@@ -51,50 +51,96 @@ def get_posterior(models_dir, model_type, test_file, frame_width,
     )
 
     encoder_len = encode_model.input_details[0]["shape"][1 if model_type == 'Wavenet' else 2]
-
-    samples, _ = librosa.load(test_file, sr=sample_rate)
-    window = []
     all_posterior = []
-    frame_length = sample_rate // 1000 * frame_width
 
-    # Pulled from filter_dataset.py to closely match training
-    # preprocessing.
-    print('Evaluating model')
-    for start_idx in tqdm(np.arange(0, len(samples), frame_length)):
-        frame = samples[start_idx:start_idx + frame_length]
-        if len(frame) < frame_length:
-            pad_len = frame_length - len(frame)
-            frame = np.pad(frame, (0, pad_len), mode='constant')
+    print("Evaluating...")
+    for file in tqdm(test_files):
+        samples, _ = librosa.load(file, sr=sample_rate)
 
-        # filter audio through filter model
-        frame = filter.filter_frame(frame)
+        all_posterior_file = []
+        frame_length = sample_rate // 1000 * frame_width
+        window_buffer = RingBuffer([encoder_len, 40])
+        inference_hop_length = 2
 
-        if len(frame) > 0:
-            window.extend(frame)
+        # Pad with zeros to better examine trajectory.
+        samples = np.pad(samples, (sample_rate//2, sample_rate//2),
+                         mode='constant')
 
-        # Perform inference on current window.
-        if len(window) >= encoder_len:
-            # extract frames from window buffer
-            frames = window[:encoder_len]
-            # save remaining frames in window buffer
-            window = window[encoder_len:]
+        # Pulled from filter_dataset.py to closely match training
+        # preprocessing.
+        for start_idx in np.arange(0, len(samples), frame_length//2):
+            frame = samples[start_idx:start_idx + frame_length]
+            if len(frame) < frame_length:
+                pad_len = frame_length - len(frame)
+                frame = np.pad(frame, (0, pad_len), mode='constant')
 
-            # inference for CRNN model
-            if model_type == 'CRNN':
-                x = np.expand_dims(np.array(frames).T, 0)
-                x = np.expand_dims(x, -1)
-                x = np.array(encode_model(x)).squeeze(0)
-                x = detect_model(x)[0][0][0]
+            # filter audio through filter model
+            frame = filter.filter_frame(frame)
 
-            # inference for Wavenet model
-            elif model_type == 'Wavenet':
-                x = np.expand_dims(np.array(frames), 0)
-                x = np.array(encode_model(x)).squeeze(0)
-                x = detect_model(x)[0][0][1]
+            if len(frame) > 0:
+                window_buffer.write(frame[0])
 
-            all_posterior.append(x)
+            # Perform inference on current window.
+            if window_buffer.is_full:
+                # extract frames from window buffer
+                frames = window_buffer.read_all()
+                # move along two frames (20ms) for
+                # sliding window.
+                window_buffer.rewind().seek(inference_hop_length)
+
+                # inference for CRNN model
+                if model_type == 'CRNN':
+                    x = np.expand_dims(np.array(frames).T, 0)
+                    x = np.expand_dims(x, -1)
+                    x = np.array(encode_model(x)).squeeze(0)
+                    x = detect_model(x)[0][0][0]
+
+                # inference for Wavenet model
+                elif model_type == 'Wavenet':
+                    x = np.expand_dims(np.array(frames), 0)
+                    x = np.array(encode_model(x)).squeeze(0)
+                    x = detect_model(x)[0][0][1]
+
+                all_posterior_file.append(x)
+
+        # TODO: Currently grabbing maximum
+        # posterior output over all windows
+        # for file. Eventually, if we can
+        # model duration or otherwise, we
+        # may refine this to be a bit more
+        # rigorous about what constitutes
+        # an accept.
+        if eval_type == "false_negatives":
+            all_posterior.append(np.max(all_posterior_file))
+            if all_posterior[-1] < 0.75:
+                plot_wav_and_posterior(samples, all_posterior_file,
+                                       sample_rate, Path(file).stem)
+        else:
+            all_posterior.append(all_posterior_file)
 
     return all_posterior
+
+
+# TODO: Could the posterior trajectory be better aligned with
+# the waveform? The first window really corresponds to the
+# first 1.5 second block, then sliding 20 ms windows.
+def plot_wav_and_posterior(wav, posteriors, sample_rate, filename):
+    fig, ax = plt.subplots(2, 1, figsize=(10, 5))
+    ax[0].set_title("Posterior Trajectory for\n " + str(filename), size=18,
+                    fontweight="bold")
+    ax[0].plot(posteriors)
+    ax[0].set_facecolor(color='lightgrey')
+    ax[0].grid(color='white')
+    ax[0].set_xlabel("Window", size=12)
+    ax[0].set_ylabel("Posterior\nProbability", size=12)
+    x = [samp_num / sample_rate for samp_num in range(len(wav))]
+    ax[1].plot(x, wav)
+    ax[1].set_facecolor(color='lightgrey')
+    ax[1].grid(color='white')
+    ax[1].set_ylabel("Amplitude", size=12)
+    ax[1].set_xlabel("Time (sec)", size=12)
+    plt.show()
+    plt.close()
 
 
 def testset_files(base_path):
@@ -102,50 +148,33 @@ def testset_files(base_path):
     # find all wav file paths from testset
     json_path = base_path + "test.json"
     test_data = json.load(open(json_path, 'r'))
-    wakeword_files = [(base_path + path["audio_file_path"], path["is_hotword"]) \
-                        for path in test_data if path["is_hotword"]]
-    not_wakeword_files = [(base_path + path["audio_file_path"], path["is_hotword"]) \
-                        for path in test_data if not path["is_hotword"]]
+    wakeword_files = [base_path + path["audio_file_path"] for path in test_data if path["is_hotword"]]
+    not_wakeword_files = [base_path + path["audio_file_path"] for path in test_data if not path["is_hotword"]]
 
-    return wakeword_files, not_wakeword_files 
-
-def load_test(wakeword_files, not_wakeword_files):
-    
-    print('Loading all positive class wav files for test set')
-    wakeword_wavs = [AudioSegment.from_wav(path[0]) for path in tqdm(wakeword_files)]
-    print('Loading all negative class wav files for test set')
-    not_wakeword_wavs = [AudioSegment.from_wav(path[0]) for path in tqdm(not_wakeword_files)]
-
-    return wakeword_wavs, not_wakeword_wavs 
+    return wakeword_files, not_wakeword_files
 
 
-def concatenate_test(wakeword_wavs, not_wakeword_wavs, FFR_path, FAR_path):
-    # Create long audio file with only wakeword 
+def concatenate_FA(wavs, num_files, FAR_path):
+    # Create long audio file with only wakeword
     # to calculate FRR, and only not-wakeword for FAR.
+    wavs_concat = wavs[0]
 
-    wakeword_wavs_concat = wakeword_wavs[0]
-    not_wakeword_wavs_concat = not_wakeword_wavs[0]
-
-    print('Concatenating positive samples')
-    for wav in tqdm(wakeword_wavs[1:]):
-        wakeword_wavs_concat += AudioSegment.silent(duration=3000) + wav
-
-    wakeword_wavs_concat.export(FFR_path, format="wav")
-
-    # Just take half of the samples...could even be less.
+    # Just take a subset of files.
     print('Concatenating negative samples')
-    for wav in tqdm(not_wakeword_wavs[1:len(wakeword_wavs)]):
-        not_wakeword_wavs_concat += AudioSegment.silent(duration=3000) + wav
+    for wav in tqdm(wavs[1:len(num_files)]):
+        wavs_concat += AudioSegment.silent(duration=3000) + wav
 
-    not_wakeword_wavs_concat.export(FAR_path, format="wav")
+    wavs_concat.export(FAR_path, format="wav")
 
-def load_posteriors(models_dir, model_type, frame_width, sample_rate, input_path, out_path):
+
+def load_posteriors(models_dir, model_type, frame_width,
+                    sample_rate, eval_type, input_path, out_path):
     if out_path.exists():
         with open(out_path, 'rb') as f:
             posteriors = pickle.load(f)
     else:
-        posteriors = get_posterior(models_dir, model_type, input_path,
-                                   frame_width, sample_rate)
+        posteriors = get_posterior(models_dir, model_type, eval_type,
+                                   input_path, frame_width, sample_rate)
 
         # make directory structure if it does not exist
         #out_path.mkdir(parents=True, exist_ok=True)
@@ -153,15 +182,14 @@ def load_posteriors(models_dir, model_type, frame_width, sample_rate, input_path
             pickle.dump(posteriors, f)
     return posteriors
 
-def duration_audio(wav_path, sample_rate):
 
-    # get duration in seconds for wavefile 
-    s, _ = librosa.load(wav_path, sr=sample_rate)
-    duration = len(s)/sample_rate
+def duration_test(FAR_path, sample_rate):
+    # get duration in seconds for negative evaluation set
+    s, _ = librosa.load(FAR_path, sr=sample_rate)
+    return len(s)/sample_rate
 
-    return duration
 
-def plot_FRR_FAR(keyword_posteriors, no_keyword_posteriors, num_wakewords, not_wakeword_duration_hrs, model_type):
+def plot_FRR_FAR(keyword_posteriors, no_keyword_posteriors, num_wakewords, total_duration_hrs, model_type):
 
     if model_type == 'CRNN':
         # CRNN
@@ -177,13 +205,11 @@ def plot_FRR_FAR(keyword_posteriors, no_keyword_posteriors, num_wakewords, not_w
         prev_wake = False
         accepts = 0
 
-        # measure true positives
+        # measure true positives, now one threshold
+        # for each wakeword instance.
         for posterior in keyword_posteriors:
             if posterior > threshold and not prev_wake:
                  accepts += 1
-            prev_wake = False
-            if posterior > threshold:
-                 prev_wake = True
         rejects = num_wakewords - accepts
         reject_percentage = rejects / num_wakewords
         FRR.append(reject_percentage)
@@ -198,7 +224,7 @@ def plot_FRR_FAR(keyword_posteriors, no_keyword_posteriors, num_wakewords, not_w
             prev_wake = False
             if posterior > threshold:
                  prev_wake = True
-        accepts_rate = accepts / not_wakeword_duration_hrs 
+        accepts_rate = accepts / total_duration_hrs
         FAR.append(accepts_rate)
 
     # plot data
@@ -236,10 +262,11 @@ def plot_FRR_FAR(keyword_posteriors, no_keyword_posteriors, num_wakewords, not_w
     plt.close()
 
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description='Evaluates wakeword model(s), reports useful metrics.')
-    parser.add_argument('--model_type', type=str, default='Wavenet', choices=['CRNN', 'Wavenet'], help='Model type being evaluated.')
-    parser.add_argument('--models_dir', type=str, default='wwdetect/wavenet/tf_models', help='Directory where trained models are stored.')
+    parser.add_argument('--model_type', type=str, default='CRNN', choices=['CRNN', 'Wavenet'], help='Model type being evaluated.')
+    parser.add_argument('--models_dir', type=str, default='CRNN', help='Directory where trained models are stored.')
     parser.add_argument('--data_dir', type=str, default='data/hey_snips_research_6k_en_train_eval_clean_ter/',
                         help='Directory with Hey Snips raw dataset')
     parser.add_argument('--eval_dir', type=str, default='data/evaluation/',
@@ -255,50 +282,52 @@ def parse_args():
 def main(args) -> int:
     if not Path(args.results_dir).exists():
         try:
-            os.mkdir(args.results_dir)
+            os.makedirs(args.results_dir)
         except FileExistsError:
             print("results directory exists")
 
-    # paths for concatenation of positive and negative samples wavs
-    FRR_path = Path(os.path.join(args.eval_dir, args.pos_samples))
+    # paths for concatenation of negative samples wavs
     FAR_path = Path(os.path.join(args.eval_dir, args.neg_samples))
 
     # load audio data
-    wakeword_files, not_wakeword_files = testset_files(args.data_dir)
+    wakeword_paths, not_wakeword_paths = testset_files(args.data_dir)
 
-    # get number of wakeword examples 
-    num_wakewords = len(wakeword_files)
+    # get number of wakeword examples
+    num_wakewords = len(wakeword_paths)
 
-    # if both negative and positive example evaluation files don't exists, create them
-    if not FAR_path.exists() or not FRR_path.exists():
+    # if negative evaluation file doesn't exist, create them
+    if not FAR_path.exists():
         try:
             os.mkdir(args.eval_dir)
         except FileExistsError:
             print("directory for eval files exists")
-        wakeword_wavs, not_wakeword_wavs = load_test(wakeword_files, not_wakeword_files)
-        concatenate_test(wakeword_wavs, not_wakeword_wavs, FRR_path, FAR_path)
+        print(f'Loading all files for FA test set')
+        not_wakeword_wavs = [AudioSegment.from_wav(path) for path in tqdm(not_wakeword_paths)]
+        concatenate_FA(not_wakeword_wavs, num_wakewords, FAR_path)
 
         # clean up memory
-        del wakeword_wavs
         del not_wakeword_wavs
 
-    # get duration of not wakeword test audio
-    print('Calculating duration of non-wakeword audio')
-    not_wakeword_duration_hrs = duration_audio(FAR_path, args.sample_rate)/3600
-    print(f'Duration of non-wakeword audio is {not_wakeword_duration_hrs:.2f} hrs')
+    # get total duration
+    print('Calculating total duration of FA test set')
+    total_duration_hrs = duration_test(FAR_path, args.sample_rate) / 3600
+    print(f'Total duration of FA set is {total_duration_hrs:.2f} hrs')
 
     # get predictions from model on positive samples
-    all_posterior_wakeword = load_posteriors(args.models_dir, args.model_type, args.frame_width, 
-                                             args.sample_rate, FRR_path,
-                                             Path(os.path.join(args.results_dir, args.model_type + "_all_wakeword.pkl")))
+    all_posterior_wakeword = load_posteriors(args.models_dir, args.model_type, args.frame_width,
+                                             args.sample_rate, "false_negatives", wakeword_paths,
+                                             Path(os.path.join(args.results_dir,
+                                                               args.model_type + "_all_wakeword.pkl")))
 
     # get predictions from model on negative samples
-    all_posterior_not_wakeword = load_posteriors(args.models_dir, args.model_type, args.frame_width, 
-                                                 args.sample_rate, FAR_path,
-                                                 Path(os.path.join(args.results_dir, args.model_type + "_no_wakeword.pkl")))
+    all_posterior_not_wakeword = load_posteriors(args.models_dir, args.model_type, args.frame_width,
+                                                 args.sample_rate, "false_accepts", FAR_path,
+                                                 Path(os.path.join(args.results_dir,
+                                                                   args.model_type + "_no_wakeword.pkl")))
 
     # plot results
-    plot_FRR_FAR(all_posterior_wakeword, all_posterior_not_wakeword, num_wakewords, not_wakeword_duration_hrs, args.model_type)
+    plot_FRR_FAR(all_posterior_wakeword, all_posterior_not_wakeword, num_wakewords, total_duration_hrs,
+                 args.model_type)
 
     return 0
 
