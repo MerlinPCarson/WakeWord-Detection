@@ -72,7 +72,7 @@ def parse_args():
     parser.add_argument('--num_features', type=float, default=40, help='Number of features per-timestep')
     parser.add_argument('--timesteps', type=int, default=None, help='Number of timesteps per example, None for variable length')
     parser.add_argument('--seed', type=int, default=9999, help='Random seed for training')
-    parser.add_argument('--eval_model', type=str, default='model/wavenet_model', 
+    parser.add_argument('--eval_model', type=str, default='models/wavenet', 
                                     help='Location of model to evaluate (use comma seperated list to evaluate multiple models)')
     parser.add_argument('--eval_file', type=str, default=None, 
                                     help='Location of file that contains experiment metadata')
