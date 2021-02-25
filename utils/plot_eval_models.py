@@ -6,7 +6,7 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 
-from scipy.signal import medfilt
+#from scipy.signal import medfilt
 from evaluate_models import testset_files, duration_test
 
 def plot_FRR_FAR(results):
