@@ -153,23 +153,22 @@ def load_posteriors(models_dir, model_type, frame_width, sample_rate, input_path
             pickle.dump(posteriors, f)
     return posteriors
 
-def duration_test(FRR_path, FAR_path, sample_rate):
+def duration_audio(wav_path, sample_rate):
 
-    total_duration = 0
+    # get duration in seconds for wavefile 
+    s, _ = librosa.load(wav_path, sr=sample_rate)
+    duration = len(s)/sample_rate
 
-    # get duration in seconds for positive evaluation set
-    s, _ = librosa.load(FRR_path, sr=sample_rate)
-    total_duration += len(s)/sample_rate
+    return duration
 
-    # get duration in seconds for negative evaluation set
-    s, _ = librosa.load(FAR_path, sr=sample_rate)
-    total_duration += len(s)/sample_rate
+def plot_FRR_FAR(keyword_posteriors, no_keyword_posteriors, num_wakewords, not_wakeword_duration_hrs, model_type):
 
-    return total_duration
-
-def plot_FRR_FAR(keyword_posteriors, no_keyword_posteriors, num_wakewords, total_duration_hrs, model_type):
-
-    thresholds = np.arange(0.98,0.99999,0.0005)
+    if model_type == 'CRNN':
+        # CRNN
+        thresholds = np.arange(0.98,0.99999,0.0005)
+    else:
+        # all thresholds 
+        thresholds = np.arange(0.5,0.99999,0.005)
 
     FRR = []
     FAR = []
@@ -199,7 +198,7 @@ def plot_FRR_FAR(keyword_posteriors, no_keyword_posteriors, num_wakewords, total
             prev_wake = False
             if posterior > threshold:
                  prev_wake = True
-        accepts_rate = accepts / total_duration_hrs 
+        accepts_rate = accepts / not_wakeword_duration_hrs 
         FAR.append(accepts_rate)
 
     # plot data
@@ -283,10 +282,10 @@ def main(args) -> int:
         del wakeword_wavs
         del not_wakeword_wavs
 
-    # get total duration
-    print('Calculating total duration of test set')
-    total_duration_hrs = duration_test(FRR_path, FAR_path, args.sample_rate)/3600
-    print(f'Total duration of evaluation set is {total_duration_hrs:.2f} hrs')
+    # get duration of not wakeword test audio
+    print('Calculating duration of non-wakeword audio')
+    not_wakeword_duration_hrs = duration_audio(FAR_path, args.sample_rate)/3600
+    print(f'Duration of non-wakeword audio is {not_wakeword_duration_hrs:.2f} hrs')
 
     # get predictions from model on positive samples
     all_posterior_wakeword = load_posteriors(args.models_dir, args.model_type, args.frame_width, 
@@ -299,7 +298,7 @@ def main(args) -> int:
                                                  Path(os.path.join(args.results_dir, args.model_type + "_no_wakeword.pkl")))
 
     # plot results
-    plot_FRR_FAR(all_posterior_wakeword, all_posterior_not_wakeword, num_wakewords, total_duration_hrs, args.model_type)
+    plot_FRR_FAR(all_posterior_wakeword, all_posterior_not_wakeword, num_wakewords, not_wakeword_duration_hrs, args.model_type)
 
     return 0
 
