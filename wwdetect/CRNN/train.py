@@ -58,19 +58,8 @@ METRICS = [
 ]
 
 
-def eval_basics(model, partition, labels):
-    # Prep data for sklearn metrics. Wish could just use the
-    # data generator, but tricky to extract labels.
-    samples = len(partition["test"])
-    print(samples)
-    X = np.zeros((samples, INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES, 1))
-    y = np.empty((samples,), dtype=int)
-    for i, item in enumerate(partition["test"]):
-        X_i = np.load(item).T[:, :INPUT_SHAPE_FRAMES]
-        X_i = np.pad(X_i, pad_width=((0, 0), (0, INPUT_SHAPE_FRAMES - X_i.shape[1])),
-                     mode="constant", constant_values=(0, 0))
-        X[i,] = np.expand_dims(X_i, -1)
-        y[i] = labels[item]
+def eval_basics(model, test_generator):
+    X, y = test_generator[0]
 
     metrics = model.evaluate(X,y)
     predictions = model.predict(X, verbose=0)
@@ -82,43 +71,18 @@ def eval_basics(model, partition, labels):
     print(f"balanced accuracy: {bal_acc}")
 
 
-def data_prep(data_path, preprocessed=True):
+def data_prep(data_path):
 
-    partition = {}
+    dev_generator = HeySnipsPreprocessed([data_path + "dev.h5"], batch_size=BATCH_SIZE,
+                                              frame_num=INPUT_SHAPE_FRAMES, feature_num=INPUT_SHAPE_FEATURES)
+    test_generator = HeySnipsPreprocessed([data_path + "test.h5"], batch_size=0,
+                                              frame_num=INPUT_SHAPE_FRAMES, feature_num=INPUT_SHAPE_FEATURES)
+    training_generator = HeySnipsPreprocessed([data_path + "train.h5", data_path + "train_enhanced.h5"],
+                                              batch_size=BATCH_SIZE, frame_num=INPUT_SHAPE_FRAMES,
+                                                                     feature_num=INPUT_SHAPE_FEATURES)
 
-    if preprocessed:
-        partition['train'] = glob.glob(data_path + "/train/*/*.npy")
-        partition['test'] = glob.glob(data_path + "/test/*/*.npy")
-        partition['dev'] = glob.glob(data_path + "/dev/*/*.npy")
+    return training_generator, dev_generator, test_generator
 
-        print(len(partition["train"]))
-        print(len(partition["dev"]))
-        all_ids = list(chain(*[ids for ids in partition.values()]))
-        labels = {id: (0 if "not-hey-snips" in id else 1) for id in all_ids}
-
-        training_generator = HeySnipsPreprocessed(partition['train'], labels, batch_size=BATCH_SIZE, dim=(INPUT_SHAPE_FEATURES,INPUT_SHAPE_FRAMES))
-        dev_generator = HeySnipsPreprocessed(partition['dev'], labels, batch_size=BATCH_SIZE, dim=(INPUT_SHAPE_FEATURES,INPUT_SHAPE_FRAMES))
-        test_generator = HeySnipsPreprocessed(partition['test'], labels, batch_size=BATCH_SIZE, dim=(INPUT_SHAPE_FEATURES,INPUT_SHAPE_FRAMES))
-    else:
-        train_path = json.load(open("train.json", 'r'))
-        test_path = json.load(open("test.json", 'r'))
-        dev_path = json.load(open("dev.json", 'r'))
-        partition['train'] = [file["audio_file_path"] for file in train_path]
-        partition['test'] = [file["audio_file_path"] for file in test_path]
-        partition['dev'] = [file["audio_file_path"] for file in dev_path]
-        all_ids_labels = [(file["audio_file_path"], file["is_hotword"]) for file in train_path] + \
-                         [(file["audio_file_path"], file["is_hotword"]) for file in test_path] + \
-                         [(file["audio_file_path"], file["is_hotword"]) for file in dev_path]
-        labels = {pair[0]: pair[1] for pair in all_ids_labels}
-
-        training_generator = HeySnipsPreprocessed(partition['train'], labels, batch_size=BATCH_SIZE,
-                                                  dim=(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES))
-        dev_generator = HeySnipsPreprocessed(partition['dev'], labels, batch_size=BATCH_SIZE,
-                                             dim=(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES))
-        test_generator = HeySnipsPreprocessed(partition['test'], labels, batch_size=BATCH_SIZE,
-                                              dim=(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES))
-
-    return training_generator, dev_generator, test_generator, partition, labels
 
 def training_hypermodel(training_generator, dev_generator, early_stopping=False):
     if early_stopping:
@@ -202,9 +166,9 @@ def training_basic(training_generator, dev_generator, early_stopping=False):
     return model
 
 def main():
-    train, dev, test, partition, labels = data_prep("/content/machine-learning-data/wakeword_data_preprocessed/")
+    train, dev, test = data_prep("/content/machine-learning-data/wakeword_data_preprocessed/")
     model = training_basic(train, dev, early_stopping=True)
-    eval_basics(model, partition, labels)
+    eval_basics(model, test)
 
 if __name__ == "__main__":
     main()
