@@ -26,9 +26,7 @@ Training and evaluation scripts for wake word detection DNN models.
     
     * Script to run CRNN training, automatically output both standard model files and tflite files. Supplies basic metrics for final model on test data. Model hyperparameters can be adjusted via variables at top of file. 
 
-  Evaluate models using FAR/FRR:
-  
-    > python utils/evaluate_models.py --model_type \<CRNN or Wavenet> --models_dir \<path to tflite models> --data_dir \<path to hey snips dataset> 
+
 
 - Wavenet described in Coucke *et al.* ["paper"](https://arxiv.org/abs/1811.07684)
 
@@ -47,6 +45,10 @@ Training and evaluation scripts for wake word detection DNN models.
    Convert Wavenet Model to TF-Lite models (encode and detect):
   
     > python wwdetect/wavenet/convert_wavenet_tflite.py
+    
+ - Evaluate models using FAR/FRR:
+  
+    > python utils/evaluate_models.py --model_type \<CRNN or Wavenet> --models_dir \<path to tflite models> --data_dir \<path to hey snips dataset> 
     
 ## License
 Copyright 2021: Alireza Bayestehtashk, Amie Roten, Merlin Carson, Meysam Asagari  
