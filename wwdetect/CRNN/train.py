@@ -1,5 +1,7 @@
+import sys
 import glob
 import json
+import argparse
 from itertools import chain
 
 from tensorflow.random import set_seed
@@ -165,10 +167,17 @@ def training_basic(training_generator, dev_generator, early_stopping=False):
     model.save_to_tflite()
     return model
 
-def main():
-    train, dev, test = data_prep("/content/machine-learning-data/wakeword_data_preprocessed/")
+def parse_args():
+    parser = argparse.ArgumentParser(description='Trains CRNN, outputs model files.')
+    parser.add_argument('--data_dir', type=str, default='/data_enhanced/', help='Directory where training data is stored.')
+    args = parser.parse_args()
+    return args
+
+def main(args):
+    train, dev, test = data_prep(args.data_dir)
     model = training_basic(train, dev, early_stopping=True)
     eval_basics(model, test)
 
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    args = parse_args()
+    sys.exit(main(args))

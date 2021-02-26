@@ -49,7 +49,7 @@ class HeySnipsPreprocessed(Sequence):
 
     # Supplies number of batches per epoch.
     def __len__(self):
-        return int(np.floor(len(self.list_IDs) / self.batch_size))
+        return int(np.floor(len(self.ids) / self.batch_size))
 
     # Generate a batch of data.
     def __getitem__(self, index):
