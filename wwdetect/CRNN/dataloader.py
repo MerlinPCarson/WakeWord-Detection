@@ -9,7 +9,6 @@ class HeySnipsPreprocessed(Sequence):
                shuffle=True, n_channels=1):
         self.frame_num = frame_num
         self.feature_num = feature_num
-        self.batch_size = batch_size
         self.h5_paths = h5_paths
         self.n_classes = n_classes
         self.shuffle = shuffle
@@ -18,6 +17,10 @@ class HeySnipsPreprocessed(Sequence):
         # Load features from h5 files.
         self.dataset, self.ids = self.load_data()
         self.on_epoch_end()
+
+        if batch_size == 0:
+            batch_size = len(self.ids)
+        self.batch_size = batch_size
 
     # Shuffles data after every epoch.
     def on_epoch_end(self):
@@ -85,7 +88,7 @@ if __name__ == "__main__":
 
     dev_generator = HeySnipsPreprocessed([data_path + "dev.h5"], batch_size=BATCH_SIZE,
                                               frame_num=INPUT_SHAPE_FRAMES, feature_num=INPUT_SHAPE_FEATURES)
-    test_generator = HeySnipsPreprocessed([data_path + "test.h5"], batch_size=BATCH_SIZE,
+    test_generator = HeySnipsPreprocessed([data_path + "test.h5"], batch_size=0,
                                               frame_num=INPUT_SHAPE_FRAMES, feature_num=INPUT_SHAPE_FEATURES)
     training_generator = HeySnipsPreprocessed([data_path + "train.h5", data_path + "train_enhanced.h5"],
                                               batch_size=BATCH_SIZE, frame_num=INPUT_SHAPE_FRAMES,
