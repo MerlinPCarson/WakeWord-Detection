@@ -45,7 +45,9 @@ Training and evaluation scripts for wake word detection DNN models.
    Convert Wavenet Model to TF-Lite models (encode and detect):
   
     > python wwdetect/wavenet/convert_wavenet_tflite.py
-    
+   
+# Evaluation
+
  - Evaluate models using FAR/FRR:
   
     > python utils/evaluate_models.py --model_type \<CRNN or Wavenet> --models_dir \<path to tflite models> --data_dir \<path to hey snips dataset> 
