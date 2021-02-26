@@ -238,7 +238,7 @@ def main(args) -> int:
     start = time.time()
 
     dataset_preprocessor = Dataset_Preprocessor(**vars(args))
-    #dataset_preprocessor.isolate_speech()
+    dataset_preprocessor.isolate_speech()
     dataset_preprocessor.reload_metadata(args.out_dir)
     dataset_preprocessor.enhance_train_set(original_path=args.out_dir)
 
