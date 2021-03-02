@@ -40,7 +40,8 @@ def evaluate_FRR_full_pipeline(model_type="CRNN", test_file="data/evaluation/hey
 
 
 def get_posterior(models_dir, model_type, eval_type,
-                  test_files, frame_width, sample_rate):
+                  test_files, frame_width, sample_rate,
+                  examine_audio=False):
 
     filter = Filter(model_dir=models_dir)
     encode_model: TFLiteModel = TFLiteModel(
@@ -53,14 +54,15 @@ def get_posterior(models_dir, model_type, eval_type,
     encoder_len = encode_model.input_details[0]["shape"][1 if model_type == 'Wavenet' else 2]
     all_posterior = []
 
+    frame_length = sample_rate // 1000 * frame_width
+    inference_hop_length = 2
+
     print("Evaluating...")
     for file in tqdm(test_files):
         samples, _ = librosa.load(file, sr=sample_rate)
 
         all_posterior_file = []
-        frame_length = sample_rate // 1000 * frame_width
-        window_buffer = RingBuffer([encoder_len, 40])
-        inference_hop_length = 2
+        window_buffer = []
 
         # Pad with zeros to better examine trajectory.
         samples = np.pad(samples, (sample_rate//2, sample_rate//2),
@@ -68,7 +70,7 @@ def get_posterior(models_dir, model_type, eval_type,
 
         # Pulled from filter_dataset.py to closely match training
         # preprocessing.
-        for start_idx in np.arange(0, len(samples), frame_length//2):
+        for start_idx in tqdm(np.arange(0, len(samples), frame_length), leave=False):
             frame = samples[start_idx:start_idx + frame_length]
             if len(frame) < frame_length:
                 pad_len = frame_length - len(frame)
@@ -78,15 +80,13 @@ def get_posterior(models_dir, model_type, eval_type,
             frame = filter.filter_frame(frame)
 
             if len(frame) > 0:
-                window_buffer.write(frame[0])
+                window_buffer.extend(frame)
 
             # Perform inference on current window.
-            if window_buffer.is_full:
-                # extract frames from window buffer
-                frames = window_buffer.read_all()
-                # move along two frames (20ms) for
-                # sliding window.
-                window_buffer.rewind().seek(inference_hop_length)
+            if len(window_buffer) >= encoder_len:
+
+                frames = window_buffer[:encoder_len]
+                window_buffer = window_buffer[inference_hop_length:]
 
                 # inference for CRNN model
                 if model_type == 'CRNN':
@@ -112,11 +112,12 @@ def get_posterior(models_dir, model_type, eval_type,
         # an accept.
         if eval_type == "false_negatives":
             all_posterior.append(np.max(all_posterior_file))
-            if all_posterior[-1] < 0.75:
-                plot_wav_and_posterior(samples, all_posterior_file,
-                                       sample_rate, Path(file).stem)
+            if examine_audio:
+                if all_posterior[-1] < 0.75:
+                    plot_wav_and_posterior(samples, all_posterior_file,
+                                        sample_rate, Path(file).stem)
         else:
-            all_posterior.append(all_posterior_file)
+            all_posterior.extend(all_posterior_file)
 
     return all_posterior
 
@@ -168,19 +169,19 @@ def concatenate_FA(wavs, num_files, FAR_path):
 
 
 def load_posteriors(models_dir, model_type, frame_width,
-                    sample_rate, eval_type, input_path, out_path):
+                    sample_rate, eval_type, input_path, 
+                    out_path, examine_audio=False):
     if out_path.exists():
         with open(out_path, 'rb') as f:
             posteriors = pickle.load(f)
     else:
         posteriors = get_posterior(models_dir, model_type, eval_type,
-                                   input_path, frame_width, sample_rate)
+                                   input_path, frame_width, sample_rate,
+                                   examine_audio)
 
-        # make directory structure if it does not exist
-        #out_path.mkdir(parents=True, exist_ok=True)
         with open(out_path, 'wb') as f:
             pickle.dump(posteriors, f)
-    return posteriors
+    return np.squeeze(np.array(posteriors))
 
 
 def duration_test(FAR_path, sample_rate):
@@ -191,25 +192,23 @@ def duration_test(FAR_path, sample_rate):
 
 def plot_FRR_FAR(keyword_posteriors, no_keyword_posteriors, num_wakewords, total_duration_hrs, model_type):
 
-    if model_type == 'CRNN':
-        # CRNN
-        thresholds = np.arange(0.98,0.99999,0.0005)
-    else:
-        # all thresholds 
-        thresholds = np.arange(0.5,0.99999,0.005)
+    thresholds = np.arange(0.5,0.99999,0.005)
+
+    # smooth not keyword posteriors using average filter
+    windowsize = 30
+    no_keyword_posteriors = np.convolve(no_keyword_posteriors, np.ones((windowsize,))/windowsize, mode='same')
 
     FRR = []
     FAR = []
-    for threshold in thresholds:
+    print(f'Sweeping thresholds over posteriors')
+    for threshold in tqdm(thresholds):
 
         prev_wake = False
         accepts = 0
 
-        # measure true positives, now one threshold
-        # for each wakeword instance.
-        for posterior in keyword_posteriors:
-            if posterior > threshold and not prev_wake:
-                 accepts += 1
+        # measure true positives
+        # each postierior is over a whole wakeword utterance
+        accepts = (keyword_posteriors>threshold).sum()
         rejects = num_wakewords - accepts
         reject_percentage = rejects / num_wakewords
         FRR.append(reject_percentage)
@@ -218,6 +217,7 @@ def plot_FRR_FAR(keyword_posteriors, no_keyword_posteriors, num_wakewords, total
         accepts = 0
 
         # measure false positives
+        # only count 1 false positive for consecutive false positives
         for posterior in no_keyword_posteriors:
             if posterior > threshold and not prev_wake:
                  accepts += 1
@@ -266,25 +266,23 @@ def plot_FRR_FAR(keyword_posteriors, no_keyword_posteriors, num_wakewords, total
 def parse_args():
     parser = argparse.ArgumentParser(description='Evaluates wakeword model(s), reports useful metrics.')
     parser.add_argument('--model_type', type=str, default='CRNN', choices=['CRNN', 'Wavenet'], help='Model type being evaluated.')
-    parser.add_argument('--models_dir', type=str, default='CRNN', help='Directory where trained models are stored.')
+    parser.add_argument('--models_dir', type=str, default='utils/CRNN_files', help='Directory where trained models are stored.')
     parser.add_argument('--data_dir', type=str, default='data/hey_snips_research_6k_en_train_eval_clean_ter/',
                         help='Directory with Hey Snips raw dataset')
-    parser.add_argument('--eval_dir', type=str, default='data/evaluation/',
+    parser.add_argument('--eval_dir', type=str, default='data/evaluation',
                         help='Directory to save and load concatenated wav files from')
     parser.add_argument('--pos_samples', type=str, default='hey_snips_long.wav', help='File for concatenated positive class samples')
     parser.add_argument('--neg_samples', type=str, default='not_hey_snips_long.wav', help='File for concatenated negative class samples')
-    parser.add_argument('--results_dir', type=str, default='utils/results', help="Directory to store results")
     parser.add_argument('--sample_rate', type=int, default=16000, help='Sample rate for audio (Hz)')
     parser.add_argument('--frame_width', type=int, default=20, help='Frame width for audio in (ms)')
+    parser.add_argument('--examine_audio', default=False, action='store_true', help='Flag to examine problematic audio clips')
     args = parser.parse_args()
+
+    assert Path(args.models_dir).exists(), "Directory for TF-Lite models and results is not found!"
+
     return args
 
 def main(args) -> int:
-    if not Path(args.results_dir).exists():
-        try:
-            os.makedirs(args.results_dir)
-        except FileExistsError:
-            print("results directory exists")
 
     # paths for concatenation of negative samples wavs
     FAR_path = Path(os.path.join(args.eval_dir, args.neg_samples))
@@ -316,14 +314,16 @@ def main(args) -> int:
     # get predictions from model on positive samples
     all_posterior_wakeword = load_posteriors(args.models_dir, args.model_type, args.frame_width,
                                              args.sample_rate, "false_negatives", wakeword_paths,
-                                             Path(os.path.join(args.results_dir,
-                                                               args.model_type + "_all_wakeword.pkl")))
+                                             Path(os.path.join(args.models_dir,
+                                                               args.model_type + "_all_wakeword.pkl")),
+                                             args.examine_audio)
 
     # get predictions from model on negative samples
     all_posterior_not_wakeword = load_posteriors(args.models_dir, args.model_type, args.frame_width,
-                                                 args.sample_rate, "false_accepts", FAR_path,
-                                                 Path(os.path.join(args.results_dir,
-                                                                   args.model_type + "_no_wakeword.pkl")))
+                                                 args.sample_rate, "false_accepts", [str(FAR_path)],
+                                                 Path(os.path.join(args.models_dir,
+                                                                   args.model_type + "_no_wakeword.pkl")),
+                                                 args.examine_audio)
 
     # plot results
     plot_FRR_FAR(all_posterior_wakeword, all_posterior_not_wakeword, num_wakewords, total_duration_hrs,
