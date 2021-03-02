@@ -6,8 +6,11 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 
-#from scipy.signal import medfilt
-from evaluate_models import testset_files, duration_audio
+from tqdm import tqdm
+from evaluate_models import testset_files, duration_test
+
+# estimate of wavenet paper results from figure
+WAVENET_PAPER_RESULTS = [[0.0,0.1,0.2,0.4,0.6,0.8,1.0],[0.015, 0.01,0.005,0.0001,0.00005,0.0,0.0]] 
 
 def plot_FRR_FAR(results):
     
@@ -31,11 +34,18 @@ def plot_FRR_FAR(results):
     plt.tight_layout()
     plt.show()
 
+
     fig, ax = plt.subplots(1,1)
     ax.set_facecolor('lightgray')
     for model in results:
         plt.plot(results[model]['FAR'], results[model]['FRR'], 
                  label=f"{model} thresholds: {{{results[model]['thresholds'][0]:.2f},..,{results[model]['thresholds'][-1]:.3f}}}")
+
+    # add max values to paper est. results to fit graph
+    xmin, xmax, ymin, ymax = plt.axis()
+    WAVENET_PAPER_RESULTS[0].append(xmax)
+    WAVENET_PAPER_RESULTS[1].insert(0, ymax)
+    plt.plot(WAVENET_PAPER_RESULTS[0], WAVENET_PAPER_RESULTS[1], label='Wavenet Coucke et al. Paper')
 
     plt.xlabel("False Alarms per Hour")
     plt.ylabel("False Rejection Rate")
@@ -45,20 +55,17 @@ def plot_FRR_FAR(results):
     plt.show()
     plt.close()
 
-def load_model_preds(model_types, results_dir):
+def load_model_preds(model_types, results_dir, smooth_window=30):
     assert len(model_types) == len(results_dir), 'Size mismatch between number of models and results!'
 
     # datastruct for holding posteriors
     results = {model: {} for model in model_types}
-    
 
     for model, result_dir in zip(model_types, results_dir):
         results[model]['wakeword'] = pickle.load(open(os.path.join(result_dir, f'{model}_all_wakeword.pkl'),'rb'))
-        #results[model]['smooth_wakeword'] =  np.convolve(results[model]['wakeword'], np.ones((30,))/30, mode='same')
-        #results[model]['smooth_wakeword'] =  medfilt(results[model]['wakeword'], kernel_size=31) 
         results[model]['not_wakeword'] = pickle.load(open(os.path.join(result_dir, f'{model}_no_wakeword.pkl'), 'rb'))
-        #results[model]['smooth_not_wakeword'] =  np.convolve(results[model]['not_wakeword'], np.ones((30,))/30, mode='same')
-        #results[model]['smooth_not_wakeword'] =  medfilt(results[model]['not_wakeword'], kernel_size=31) 
+        # smooth not keyword posteriors using average filter
+        results[model]['smooth_not_wakeword'] =  np.convolve(results[model]['not_wakeword'], np.ones((smooth_window,))/smooth_window, mode='same')
 
     return results
 
@@ -80,19 +87,16 @@ def process_results(results, num_wakewords, not_wakeword_duration_hrs):
 
     for model in results:
 
-        if model == 'CRNN':
-            # CRNN
-            thresholds = np.arange(0.98,0.99999,0.0005)
-        else:
-            # all thresholds 
-            thresholds = np.arange(0.5,0.99999,0.005)
+        # range of thresholds to apply to posteriors
+        thresholds = np.arange(0.5,0.99999,0.005)
 
         FRR = []
         FAR = []
-        for threshold in thresholds:
+        print(f'Sweeping thresholds over posteriors for {model} model')
+        for threshold in tqdm(thresholds):
 
             # measure true positives
-            accepts = threshold_accepts(results[model]['wakeword'], threshold)
+            accepts = (results[model]['wakeword']>threshold).sum()
             rejects = num_wakewords - accepts
             reject_percentage = rejects / num_wakewords
             FRR.append(reject_percentage)
@@ -101,7 +105,7 @@ def process_results(results, num_wakewords, not_wakeword_duration_hrs):
             accepts = 0
 
             # measure false positives
-            accepts = threshold_accepts(results[model]['not_wakeword'], threshold)
+            accepts = threshold_accepts(results[model]['smooth_not_wakeword'], threshold)
             accepts_rate = accepts / not_wakeword_duration_hrs 
             FAR.append(accepts_rate)
 
@@ -145,7 +149,7 @@ def main(args):
 
     # get duration of not wakeword test audio
     print('Calculating duration of non-wakeword audio')
-    not_wakeword_duration_hrs = duration_audio(FAR_path, args.sample_rate)/3600
+    not_wakeword_duration_hrs = duration_test(FAR_path, args.sample_rate)/3600
     print(f'Duration of non-wakeword audio is {not_wakeword_duration_hrs:.2f} hrs')
 
     # get FRR and FAR results for each model
