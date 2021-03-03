@@ -4,8 +4,9 @@ import json
 import argparse
 from itertools import chain
 
+import tensorflow as tf
 from tensorflow.random import set_seed
-from tensorflow.keras import optimizers, metrics, losses
+from tensorflow.keras import optimizers, metrics, losses, backend
 from tensorflow.keras.callbacks import EarlyStopping, \
                                        ReduceLROnPlateau, \
                                        ModelCheckpoint
@@ -13,7 +14,7 @@ from kerastuner.tuners import Hyperband
 from sklearn.metrics import balanced_accuracy_score
 import numpy as np
 
-from model import Arik_CRNN
+from model import Arik_CRNN, Arik_CRNN_CTC
 from dataloader import HeySnipsPreprocessed
 
 set_seed(42)
@@ -73,15 +74,21 @@ def eval_basics(model, test_generator):
     print(f"balanced accuracy: {bal_acc}")
 
 
-def data_prep(data_path):
+def data_prep(data_path, ctc=False):
 
     dev_generator = HeySnipsPreprocessed([data_path + "dev.h5"], batch_size=BATCH_SIZE,
-                                              frame_num=INPUT_SHAPE_FRAMES, feature_num=INPUT_SHAPE_FEATURES)
+                                                                 frame_num=INPUT_SHAPE_FRAMES,
+                                                                 feature_num=INPUT_SHAPE_FEATURES,
+                                                                 ctc=ctc)
     test_generator = HeySnipsPreprocessed([data_path + "test.h5"], batch_size=0,
-                                              frame_num=INPUT_SHAPE_FRAMES, feature_num=INPUT_SHAPE_FEATURES)
+                                                                 frame_num=INPUT_SHAPE_FRAMES,
+                                                                 feature_num=INPUT_SHAPE_FEATURES,
+                                                                 ctc=ctc)
     training_generator = HeySnipsPreprocessed([data_path + "train.h5", data_path + "train_enhanced.h5"],
-                                              batch_size=BATCH_SIZE, frame_num=INPUT_SHAPE_FRAMES,
-                                                                     feature_num=INPUT_SHAPE_FEATURES)
+                                                                 batch_size=BATCH_SIZE,
+                                                                 frame_num=INPUT_SHAPE_FRAMES,
+                                                                 feature_num=INPUT_SHAPE_FEATURES,
+                                                                 ctc=ctc)
 
     return training_generator, dev_generator, test_generator
 
@@ -149,10 +156,15 @@ def training_basic(training_generator, dev_generator, early_stopping=False):
     else:
       callbacks = None
 
-    model = Arik_CRNN(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
+    def ctc_loss(y_true, y_pred):
+        input_length = tf.fill((BATCH_SIZE,1),19)
+        label_length = tf.fill((BATCH_SIZE,1),3)
+        return backend.ctc_batch_cost(y_true, y_pred, input_length, label_length)
+
+    model = Arik_CRNN_CTC(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
                       N_C, L_T, L_F, S_T, S_F, R, N_R, N_F,
                       activation='relu')
-    model.compile(optimizer=OPTIMIZER, loss=losses.BinaryCrossentropy(), metrics=METRICS)
+    model.compile(optimizer=OPTIMIZER, loss=ctc_loss)
     model.build(input_shape=(BATCH_SIZE, INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES, 1))
 
     model.fit(x=training_generator,
@@ -169,12 +181,13 @@ def training_basic(training_generator, dev_generator, early_stopping=False):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Trains CRNN, outputs model files.')
-    parser.add_argument('--data_dir', type=str, default='/data_enhanced/', help='Directory where training data is stored.')
+    parser.add_argument('--data_dir', type=str, default='/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data_isolated_enhanced/', help='Directory where training data is stored.')
     args = parser.parse_args()
     return args
 
 def main(args):
-    train, dev, test = data_prep(args.data_dir)
+    ctc = True
+    train, dev, test = data_prep(args.data_dir, ctc)
     model = training_basic(train, dev, early_stopping=True)
     eval_basics(model, test)
 
