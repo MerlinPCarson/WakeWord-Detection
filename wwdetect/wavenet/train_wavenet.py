@@ -53,7 +53,8 @@ def train(trainset, valset, args):
     # train model
     history = model.fit(trainset, epochs=args.epochs, validation_data=valset, 
               callbacks=[reduce_lr, early_stopping, model_chkpt])
-    print(history.history)
+
+    # save model history
     pickle.dump(history.history, open(args.model + '.npy', 'wb'))
 
 
