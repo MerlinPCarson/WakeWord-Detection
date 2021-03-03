@@ -34,12 +34,13 @@ class Dataset_Preprocessor:
         self.sr = kwargs['sample_rate']
         self.out_dir = kwargs['out_dir']
         self.data_dir = kwargs['data_dir']
-        self.train_meta = json.load(open(self.data_dir + "/train.json", 'r'))
-        self.dev_meta = json.load(open(self.data_dir + "/dev.json", 'r'))
-        self.test_meta = json.load(open(self.data_dir + "/test.json", 'r'))
+        self.train_meta = json.load(open(os.path.join(self.data_dir, "train.json"), 'r'))
+        self.dev_meta = json.load(open(os.path.join(self.data_dir, "dev.json"), 'r'))
+        self.test_meta = json.load(open(os.path.join(self.data_dir, "test.json"), 'r'))
+        self.debug = kwargs['examine_audio']
 
-        if not Path(self.out_dir + "/audio_files/").exists():
-            os.makedirs(self.out_dir + "/audio_files/")
+        if not Path(os.path.join(self.out_dir, "audio_files")).exists():
+            os.makedirs(os.path.join(self.out_dir, "audio_files"))
         self.vad = webrtcvad.Vad(2)
 
     # ----------------------------------------------------------- *
@@ -57,7 +58,8 @@ class Dataset_Preprocessor:
         for split, meta in splits:
             discarded = 0
             check_index = 0
-            for file in tqdm(meta):
+            new_meta = []
+            for i, file in enumerate(tqdm(meta, leave=True)):
                 check_index += 1
                 new_path = os.path.join(self.out_dir, file['audio_file_path'])
 
@@ -87,10 +89,11 @@ class Dataset_Preprocessor:
                             new_frames_speech.extend(chunk)
                     assert len(new_frames_speech) == len(frames_speech)
 
-                    # Periodically inspect output.
-                    if check_index % 2000 == 0:
-                        self.examine_audio(file['audio_file_path'], samples, new_frames_speech, frame_timepoints,
-                                       play_sound=False, plot=True)
+                    if self.debug:
+                        # Periodically inspect output.
+                        if check_index % 2000 == 0:
+                            self.examine_audio(file['audio_file_path'], samples, new_frames_speech, frame_timepoints,
+                                        play_sound=False, plot=True)
 
                 # Use results of VAD to chop out initial and final silence, leaving one
                 # frame buffer on either side.
@@ -102,18 +105,21 @@ class Dataset_Preprocessor:
 
                     # Update duration in metadata.
                     file['duration'] = len(speech_samples) / self.sr
+
+                    new_meta.append(file)
                 # Discard files for which no speech was found.
                 except Exception as e:
-                    self.examine_audio(file['audio_file_path'], samples, new_frames_speech, frame_timepoints,
-                                       play_sound=False, plot=True)
+                    if self.debug:
+                        self.examine_audio(file['audio_file_path'], samples, new_frames_speech, frame_timepoints,
+                                        play_sound=False, plot=True)
                     discarded += 1
                     print("discarding ", file['audio_file_path'])
-                    meta.remove(file)
+                    #meta.remove(file)
             print("discarded", discarded)
 
             # Write out updated metadata.
-            with open(self.out_dir + split + ".json", 'w') as outfile:
-                json.dump(meta, outfile)
+            with open(os.path.join(self.out_dir, split + ".json"), 'w') as outfile:
+                json.dump(new_meta, outfile, indent=4)
 
     # ----------------------------------------------------------- *
     # Take a look at which frames of an audio file have been
@@ -154,7 +160,7 @@ class Dataset_Preprocessor:
     # if different from original path designated when creating class.
     def enhance_train_set(self, original_path=None):
         np.random.seed(42)
-        enhanced_out_path = self.out_dir + "enhanced_train_negative/"
+        enhanced_out_path = os.path.join(self.out_dir, "enhanced_train_negative")
         enhanced_meta = []
         if not Path(enhanced_out_path).exists():
             os.makedirs(enhanced_out_path)
@@ -163,9 +169,9 @@ class Dataset_Preprocessor:
             original_path=self.data_dir
 
         negative_files = [file['audio_file_path'] for file in self.train_meta if not file['is_hotword'] and
-                                                            Path(original_path + file['audio_file_path']).exists()]
-        for file in tqdm(self.train_meta):
-            if file['is_hotword'] and Path(original_path + file['audio_file_path']).exists():
+                                                            Path(os.path.join(original_path, file['audio_file_path'])).exists()]
+        for file in tqdm(self.train_meta, leave=True):
+            if file['is_hotword'] and Path(os.path.join(original_path, file['audio_file_path'])).exists():
                 #offset = np.random.randint(0,2) # 0: onset, 1: offset
                 offset = 1 # For now, just replace offsets.
                 percentage = np.random.uniform(0.45,0.6) # How much to remove/replace.
@@ -205,31 +211,32 @@ class Dataset_Preprocessor:
                 else:
                     pos_samples_reduced = pos_samples[num_samples_to_remove:]
                     new_neg_samples = np.append(neg_samples[:num_samples_to_remove],pos_samples_reduced)
-                sf.write(self.out_dir + "enhanced_train_negative/" + save_path, new_neg_samples, self.sr)
+                sf.write(os.path.join(self.out_dir, "enhanced_train_negative", save_path), new_neg_samples, self.sr)
 
                 # Add metadata to be written out as json file.
                 enhanced_meta.append({'duration': len(new_neg_samples) / self.sr,
                                       'worker_id': 'n_a',
-                                      'audio_file_path': "enhanced_train_negative/" + save_path,
+                                      'audio_file_path': os.path.join("enhanced_train_negative", save_path),
                                       'id': Path(save_path).stem,
                                       'is_hotword': 0})
         # Write out metadata.
-        with open(self.out_dir + "train_enhanced" + ".json", 'w') as outfile:
-            json.dump(enhanced_meta, outfile)
+        with open(os.path.join(self.out_dir, "train_enhanced.json"), 'w') as outfile:
+            json.dump(enhanced_meta, outfile, indent=4)
 
 
     def reload_metadata(self, dir):
-        self.train_meta = json.load(open(dir + "train.json", 'r'))
-        self.dev_meta = json.load(open(dir + "dev.json", 'r'))
-        self.test_meta = json.load(open(dir + "test.json", 'r'))
+        self.train_meta = json.load(open(os.path.join(dir, "train.json"), 'r'))
+        self.dev_meta = json.load(open(os.path.join(dir, "dev.json"), 'r'))
+        self.test_meta = json.load(open(os.path.join(dir, "test.json"), 'r'))
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Preprocesses audio data by isolating speech and '
                                                  'enhancing train samples')
     parser.add_argument('--data_dir', type=str, default='data/hey_snips_research_6k_en_train_eval_clean_ter',
                         help='Directory with Hey Snips raw dataset')
-    parser.add_argument('--out_dir', type=str, default='data_speech_isolated/', help='Directory to save datasets to')
+    parser.add_argument('--out_dir', type=str, default='data/data_speech_isolated/', help='Directory to save enhanced datasets to')
     parser.add_argument('--sample_rate', type=int, default=16000, help='Sample rate for audio (Hz)')
+    parser.add_argument('--examine_audio', default=False, action='store_true', help='Flag to examine problematic audio clips')
     args = parser.parse_args()
 
     return args
