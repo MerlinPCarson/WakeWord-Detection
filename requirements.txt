@@ -10,5 +10,7 @@ pynini==2.0.8
 graphviz==0.16
 torch==1.7.0
 torchaudio==0.7.0
+pyannote.audio==1.1.1
 pydub
 keras-tuner
+
