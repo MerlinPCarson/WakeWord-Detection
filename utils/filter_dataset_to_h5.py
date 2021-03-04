@@ -27,6 +27,7 @@ class Dataset_Filter:
         self.dataset = dataset
         self.audio_metadata = json.load(open(dataset, 'r'))
         self.wake_word = kwargs['wake_word']
+        self.speakers_dict = self.map_speakers()
 
         # audio parameters
         self.sr = kwargs['sample_rate']
@@ -49,6 +50,17 @@ class Dataset_Filter:
 
         # voice activity detector (0=lowest aggresiveness, 3=most agressive)
         self.vad = webrtcvad.Vad(3)
+
+    def map_speakers(self):
+        speakers = set()
+
+        for data in self.audio_metadata:
+            speakers.add(data['worker_id'])
+
+        speaker_dict = {speaker: i for i, speaker in enumerate(speakers)}
+
+        return speaker_dict
+
 
     def filter_audio_file(self, audio_file: str, label: int) -> None:
 
@@ -107,12 +119,15 @@ class Dataset_Filter:
         audio_clips = []
         # process all audio files in dataset's json file
         for audio in tqdm(self.audio_metadata):
+
             # pass audio file through filter model
             audio_clip = self.filter_audio_file(audio['audio_file_path'], audio['is_hotword']) 
 
             # dont save empty feature maps (i.e. the audio file had too few samples)
             if audio_clip is None or len(audio_clip['features']) == 0:
                 continue
+
+            audio_clip['speaker'] = self.speakers_dict[audio['worker_id']]
 
             audio_clips.append(audio_clip)
 
@@ -125,20 +140,24 @@ class Dataset_Filter:
             for audio_clip in audio_clips:
                 dset = h5f.create_dataset(audio_clip['file_name'], data=audio_clip['features'])
                 dset.attrs['is_hotword'] = audio_clip['is_hotword']
+                dset.attrs['speaker'] = audio_clip['speaker']
                 dset.attrs['speech_start_ts'] = audio_clip['speech_start_ts']
                 dset.attrs['speech_end_ts'] = audio_clip['speech_end_ts']
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Builds and saves dataset arrays from Hey Snips audio data')
-    parser.add_argument('--models_dir', type=str, default='tf_lite', help='directory with TF-Lite filter model')
-    parser.add_argument('--data_dir', type=str, default='data/hey_snips_research_6k_en_train_eval_clean_ter', help='Directory with Hey Snips raw dataset')
+    parser.add_argument('--models_dir', type=str, default='utils/tf_lite', help='directory with TF-Lite filter model')
+    parser.add_argument('--data_dir', type=str, default='data/hey_snips_research_6k_en_train_eval_clean_ter', 
+                            help='Directory with Hey Snips raw dataset')
     parser.add_argument('--out_dir', type=str, default='data', help='Directory to save datasets to')
     parser.add_argument('--sample_rate', type=int, default=16000, help='Sample rate for audio (Hz)')
     parser.add_argument('--frame_width', type=int, default=20, help='Frame width for audio in (ms)')
     parser.add_argument('--hop_width', type=int, default=10, help='Hop width for audio in (ms)')
     parser.add_argument('-wake_word', type=str, default='hey-snips', help='Wake work in dataset')
     args = parser.parse_args()
+
+    assert os.path.exists(args.data_dir), 'Location of dataset was not found!'
 
     return args
 
