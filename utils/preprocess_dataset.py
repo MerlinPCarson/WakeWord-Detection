@@ -213,33 +213,35 @@ class Dataset_Preprocessor:
                 original_path = os.path.join(self.data_dir, file['audio_file_path'])
                 new_path = os.path.join(self.out_dir, file['audio_file_path'])
                 samples = read_audio(original_path)
-                vad_segments = get_speech_ts(samples, self.vad,
-                                             trig_sum = 0.7,
-                                             neg_trig_sum = 0.4,
-                                             num_steps=8,
-                                             num_samples_per_window=3000,
-                                             visualize_probs=False) # If this is turned on,
-                                                                    # must follow with plt.show()
 
-                # Must be at least one segment of speech detected.
-                if len(vad_segments) > 0:
-                    kept += 1
-                    start_point_sample = vad_segments[0]["start"]
-                    end_point_sample = vad_segments[-1]["end"]
+                if len(samples) > 0:
+                    vad_segments = get_speech_ts(samples, self.vad,
+                                                 trig_sum = 0.7,
+                                                 neg_trig_sum = 0.4,
+                                                 num_steps=8,
+                                                 num_samples_per_window=3000,
+                                                 visualize_probs=False) # If this is turned on,
+                                                                        # must follow with plt.show()
 
-                    if self.debug:
-                        if check_index % 2000 == 0:
-                            plt.plot(samples)
-                            plt.vlines(start_point_sample, ymin=-1, ymax=1)
-                            plt.vlines(end_point_sample, ymin=-1, ymax=1)
-                            plt.show()
-                            plt.close()
+                    # Must be at least one segment of speech detected.
+                    if len(vad_segments) > 0:
+                        kept += 1
+                        start_point_sample = vad_segments[0]["start"]
+                        end_point_sample = vad_segments[-1]["end"]
 
-                    speech_samples = samples[start_point_sample:end_point_sample]
-                    save_audio(new_path, speech_samples, self.sr)
-                    new_file = {key: value for key, value in file.items()}
-                    new_file['duration'] = speech_samples.shape[1] / self.sr
-                    new_meta.append(new_file)
+                        if self.debug:
+                            if check_index % 2000 == 0:
+                                plt.plot(samples)
+                                plt.vlines(start_point_sample, ymin=-1, ymax=1)
+                                plt.vlines(end_point_sample, ymin=-1, ymax=1)
+                                plt.show()
+                                plt.close()
+
+                        speech_samples = samples[start_point_sample:end_point_sample]
+                        save_audio(new_path, speech_samples, self.sr)
+                        new_file = {key: value for key, value in file.items()}
+                        new_file['duration'] = speech_samples.shape[1] / self.sr
+                        new_meta.append(new_file)
 
             print("discarded", check_index - kept)
 
