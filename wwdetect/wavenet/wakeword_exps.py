@@ -40,6 +40,9 @@ def main(args):
     exps = {'model_name': os.path.basename(args.model), 'keep_ratios': [f'{keep_ratio:0.2f}' for keep_ratio in keep_ratios],
             'num_wakeword': [int(trainset.number_of_wakewords() * keep_ratio) for keep_ratio in keep_ratios]}
 
+    # make model directory for model experiments metadata files
+    os.makedirs(os.path.dirname(args.model))
+
     # saving experiment info
     pickle.dump(exps, open(f'{args.model}-exps.npy', 'wb'))
 
@@ -55,6 +58,7 @@ def main(args):
             print(f'Pruning wakewords with a keep ratio of {keep_ratio}')
             trainset.prune_wakewords(keep_ratio)
             print(f'new size of training set {trainset.number_of_examples()} examples')
+            print(f'new number of wakewords in training set {trainset.number_of_wakewords()} examples')
 
         # train the model with the keep ratio
         train(trainset, valset, args)

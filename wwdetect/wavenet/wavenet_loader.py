@@ -9,7 +9,7 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
                  timesteps=182, shuffle=False, *args, **kwargs):
 
         # dataset pre-fetch
-        self.dataset, self.num_wakewords = self.preload_data(data_files)
+        self.dataset, self.num_wakewords_dataset = self.preload_data(data_files)
 
         # state variables
         self.num_features = num_features
@@ -61,7 +61,7 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
         np.random.shuffle(wakewords)
 
         # discard 1-keep_ratio of wakeword examples from datset
-        self.dataset = self.dataset + wakewords[:int(keep_ratio*self.num_wakewords)]
+        self.dataset = self.dataset + wakewords[:int(keep_ratio*self.num_wakewords_dataset)]
 
         # reshuffle dataset so wakewords are not at the end
         np.random.shuffle(self.dataset)
@@ -83,7 +83,8 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
     
     def number_of_wakewords(self):
         # returns number of wakewords in test set (does not account for pruning)
-        return self.num_wakewords
+        num_wakewords = sum([1 for i in self.dataset if i['label'] == 1])
+        return num_wakewords
 
     def on_epoch_end(self):
         # option method to run some logic at the end of each epoch: e.g. reshuffling
@@ -136,6 +137,8 @@ if __name__ == '__main__':
     # Test Loader
     data_file = 'data/dev.h5'
     dataloader = HeySnipsDataset([data_file], timesteps=182)
-    print(dataloader[0][0][0][181])
-    dataloader = HeySnipsDataset([data_file], timesteps=None)
-    print(dataloader[0][0][0][181])
+    print(dataloader.num_wakewords_dataset)
+    for kr in reversed(np.arange(0.1, 1.1, 0.1)):
+        dataloader.prune_wakewords(kr)
+        print(dataloader.number_of_wakewords())
+
