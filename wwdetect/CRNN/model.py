@@ -52,7 +52,7 @@ class Arik_CRNN(tf.keras.Model):
         self.detect = models.Sequential(name="detector")
         self.detect.add(layers.Dense(units=n_f, activation='relu', input_shape=self.encoder.output_shape[1:]))
         self.detect.add(layers.Dropout(dropout))
-        self.detect.add(layers.Dense(units=1, activation='sigmoid'))
+        self.detect.add(layers.Dense(units=2, activation='softmax'))
 
 
     def call(self, inputs, training=False):

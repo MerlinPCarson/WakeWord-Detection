@@ -45,7 +45,7 @@ class HeySnipsPreprocessed(Sequence):
         if self.ctc:
             y = np.empty((self.batch_size,3), dtype=int)
         else:
-            y = np.empty((self.batch_size), dtype=int)
+            y = np.zeros((self.batch_size,2), dtype=int)
 
         # Generate data
         for i, ID in enumerate(list_IDs_temp):
@@ -55,16 +55,17 @@ class HeySnipsPreprocessed(Sequence):
             X_i = np.pad(X_i, pad_width=((0,0), (0, self.frame_num-X_i.shape[1])), mode="constant", constant_values=(0,0))
             X[i,] = np.expand_dims(X_i, -1)
 
-            # Store class
-            label = self.dataset[ID]['label']
+            # Store class.
             if self.ctc:
                 # If this is a wakeword.
                 if label == 1:
-                    label = self.char2num(tf.strings.unicode_split("nwn", input_encoding="UTF-8"))
+                    y[i] = self.char2num(tf.strings.unicode_split("nwn", input_encoding="UTF-8"))
                 # If it is not.
                 else:
-                    label = self.char2num(tf.strings.unicode_split("nnn", input_encoding="UTF-8"))
-            y[i] = label
+                    y[i] = self.char2num(tf.strings.unicode_split("nnn", input_encoding="UTF-8"))
+
+            else:
+                y[i][self.dataset[ID]['label']] = 1
 
         return X, y
 

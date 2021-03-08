@@ -9,13 +9,13 @@ from tqdm import tqdm
 
 import tensorflow as tf
 from tensorflow.keras import metrics, models
-from sklearn.metrics import balanced_accuracy_score
+from sklearn.metrics import balanced_accuracy_score, accuracy_score
 import numpy as np
 from matplotlib import pyplot as plt
 
 from dataloader import HeySnipsPreprocessed
 
-from utils.tf_lite.tensorflow import TFLiteModel
+from tensorflow_tflite import TFLiteModel
 
 METRICS = [
       metrics.TruePositives(name='tp'),
@@ -39,19 +39,22 @@ def prep_test_data(data_path, input_frames, input_features, ctc):
 def eval_basics(encoder, decoder, test_generator):
     X, y = test_generator[0]
     X = X.astype(np.float32)
+    y = y[:,1]
     y_pred = []
     for sample in tqdm(X):
         sample = np.expand_dims(sample, axis=0)
         y_pred_sample = encoder(sample)[0]
         y_pred_sample = np.squeeze(decoder(y_pred_sample)[0])
-        y_pred.append(float(y_pred_sample))
+        y_pred.append(float(y_pred_sample[1]))
     y_pred = np.array(y_pred)
     y_pred_class = np.where(y_pred >= 0.5,1,0)
+    acc = accuracy_score(y, y_pred_class)
     bal_acc = balanced_accuracy_score(y, y_pred_class)
 
     for metric in METRICS:
         metric.update_state(y,y_pred_class)
         print(f"{metric.name}: {metric.result().numpy()}")
+    print(f"accuracy: {acc}")
     print(f"balanced accuracy: {bal_acc}")
 
 
@@ -102,8 +105,8 @@ def parse_args():
     :return: Arguments dict.
     '''
     parser = argparse.ArgumentParser(description='Evaluates CRNN model(s).')
-    parser.add_argument('--data_dir', type=str, default='/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data_isolated_enhanced/', help='Directory where test data is stored.')
-    parser.add_argument('--model_dir', type=str, default='models/')
+    parser.add_argument('--data_dir', type=str, default='/data/', help='Directory where test data is stored.')
+    parser.add_argument('--model_dir', type=str, default='models/Arik_CRNN_data_original')
     args = parser.parse_args()
     return args
 

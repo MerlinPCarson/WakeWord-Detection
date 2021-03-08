@@ -64,7 +64,7 @@ METRICS = [
 ]
 
 
-def data_prep(data_path, ctc=False):
+def data_prep(data_path, ctc=False, use_enhanced=False):
     '''
     Prep data for training.
 
@@ -76,11 +76,16 @@ def data_prep(data_path, ctc=False):
                                                                  frame_num=INPUT_SHAPE_FRAMES,
                                                                  feature_num=INPUT_SHAPE_FEATURES,
                                                                  ctc=ctc)
-    training_generator = HeySnipsPreprocessed([data_path + "train.h5", data_path + "train_enhanced.h5"],
-                                                                 batch_size=BATCH_SIZE,
-                                                                 frame_num=INPUT_SHAPE_FRAMES,
-                                                                 feature_num=INPUT_SHAPE_FEATURES,
-                                                                 ctc=ctc)
+    if use_enhanced:
+        train_paths = [data_path + "train.h5", data_path + "train_enhanced.h5"]
+    else:
+        train_paths = [data_path + "train.h5"]          
+
+    training_generator = HeySnipsPreprocessed(train_paths,
+                                              batch_size=BATCH_SIZE,
+                                              frame_num=INPUT_SHAPE_FRAMES,
+                                              feature_num=INPUT_SHAPE_FEATURES,
+                                              ctc=ctc)
 
     return training_generator, dev_generator
 
@@ -121,7 +126,7 @@ def train_hypermodel(training_generator, dev_generator, early_stopping=False):
                           dropout=hp.Float("dense_dropout", 0.0, 0.5, step=0.1),
                           activation=hp.Choice("activation", values=["relu"]))  # Perhaps try other activations?
         model.compile(optimizer=OPTIMIZER,
-                      loss=losses.BinaryCrossentropy(),
+                      loss=losses.CategoricalCrossentropy(),
                       metrics=METRICS)
         model.build(input_shape=(BATCH_SIZE, INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES, 1))
         return model
@@ -192,7 +197,7 @@ def train_basic(training_generator, dev_generator, early_stopping=False, ctc=Tru
         model = Arik_CRNN(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
                           N_C, L_T, L_F, S_T, S_F, R, N_R, N_F,
                           activation='relu')
-        model.compile(optimizer=OPTIMIZER, loss=losses.BinaryCrossentropy(), metrics=METRICS)
+        model.compile(optimizer=OPTIMIZER, loss=losses.CategoricalCrossentropy(), metrics="accuracy")
 
     model.build(input_shape=(BATCH_SIZE, INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES, 1))
 
@@ -216,10 +221,11 @@ def parse_args():
     :return: Arguments dict.
     '''
     parser = argparse.ArgumentParser(description='Trains CRNN, outputs model files.')
-    parser.add_argument('--data_dir', type=str, default='/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data_isolated_enhanced/', help='Directory where training data is stored.')
+    parser.add_argument('--data_dir', type=str, default='/data/', help='Directory where training data is stored.')
     parser.add_argument('--hyperparameter_search', type=bool, default=False)
     parser.add_argument('--early_stopping', type=bool, default=True)
-    parser.add_argument('--ctc', type=bool, default=True)
+    parser.add_argument('--use_augmented_train', type=bool, default=False)
+    parser.add_argument('--ctc', type=bool, default=False)
     args = parser.parse_args()
     return args
 
@@ -231,9 +237,9 @@ def main(args):
     :param args: Arguments dict.
     :return: 0
     '''
-    train, dev, test = data_prep(args.data_dir, args.ctc)
+    train, dev = data_prep(args.data_dir, args.ctc, )
     if args.hyperparameter_search:
-        model = train_hypermodel(train, dev, early_stopping=True)
+        model = train_hypermodel(train, dev, early_stopping=True, use_enhanced=False)
     else:
         model = train_basic(train, dev, early_stopping=True, ctc=args.ctc)
     return 0
