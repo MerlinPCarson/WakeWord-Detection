@@ -9,7 +9,7 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
                  timesteps=182, shuffle=False, *args, **kwargs):
 
         # dataset pre-fetch
-        self.dataset, self.num_wakewords_dataset = self.preload_data(data_files)
+        self.preload_data(data_files)
 
         # state variables
         self.num_features = num_features
@@ -69,6 +69,20 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
         # set new number of batchs in dataset
         self.num_batches = len(self.dataset) // self.batch_size
 
+    def prune_speakers(self, keep_ratio):
+
+        # find maximum speaker ID to keep
+        max_speaker_id = self.num_speakers_dataset * keep_ratio
+
+        # delete all speakers above max_speaker_id
+        # delete elements in reverse order so all elements are iterated over
+        for i in reversed(range(len(self.dataset))):
+            if self.dataset[i]['speaker'] > max_speaker_id:
+                del self.dataset[i]
+
+        # set new number of batchs in dataset
+        self.num_batches = len(self.dataset) // self.batch_size
+
     def get_labels(self):
         assert not self.shuffle, "Order may not be correct due to shuffling being enabled"
         return [self.dataset[i]['label'] for i in range(self.number_of_examples())]
@@ -82,9 +96,17 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
         return len(self.dataset)
     
     def number_of_wakewords(self):
-        # returns number of wakewords in test set (does not account for pruning)
+        # returns number of wakewords currently in dataset 
         num_wakewords = sum([1 for i in self.dataset if i['label'] == 1])
         return num_wakewords
+
+    def number_of_speakers(self):
+        # returns number of speakers currently in dataset 
+        num_speakers = 0
+        for data in self.dataset:
+            if data['speaker'] > num_speakers:
+                num_speakers = data['speaker']
+        return num_speakers + 1 # account for first speaker id is 0 
 
     def on_epoch_end(self):
         # option method to run some logic at the end of each epoch: e.g. reshuffling
@@ -115,7 +137,10 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
     def preload_data(self, data_files):
 
         self.dataset = []
-        self.num_wakewords = 0
+        # number of wakewords in dataset on disk
+        self.num_wakewords_dataset = 0
+        # number of speakers in dataset on disk
+        self.num_speakers_dataset = 0
         for data_file in data_files:
             print(f'pre-loading dataset from file {data_file}')
             with h5py.File(data_file, 'r') as h5:
@@ -123,22 +148,33 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
                 for key in tqdm(keys):
                     self.dataset.append({'file_name': key, 
                                          'label': np.uint8(h5[key].attrs['is_hotword']),
+                                         'speaker': np.int16(h5[key].attrs['speaker']),
                                          'start_speech': np.int16(h5[key].attrs['speech_start_ts']),
                                          'end_speech': np.int16(h5[key].attrs['speech_end_ts']),
                                          'features': np.array(h5[key][()], dtype=np.float32)})
     
                     # count number of wakewords in dataset
                     if h5[key].attrs['is_hotword'] == 1:
-                        self.num_wakewords += 1
+                        self.num_wakewords_dataset += 1
 
-        return self.dataset, self.num_wakewords
+                    # find max speaker ID
+                    if h5[key].attrs['speaker'] > self.num_speakers_dataset:
+                        self.num_speakers_dataset = h5[key].attrs['speaker']
+
+        # since first speaker ID is 0
+        self.num_speakers_dataset += 1
 
 if __name__ == '__main__':
     # Test Loader
     data_file = 'data/dev.h5'
+    data_file = 'data_speech_isolated/silero/dev.h5'
     dataloader = HeySnipsDataset([data_file], timesteps=182)
     print(dataloader.num_wakewords_dataset)
+    print(dataloader.num_speakers_dataset)
+    #for kr in reversed(np.arange(0.1, 1.1, 0.1)):
+    #    dataloader.prune_wakewords(kr)
+    #    print(dataloader.number_of_wakewords())
     for kr in reversed(np.arange(0.1, 1.1, 0.1)):
-        dataloader.prune_wakewords(kr)
-        print(dataloader.number_of_wakewords())
+        dataloader.prune_speakers(kr)
+        print(f'speakers: {dataloader.number_of_speakers()}, wakewords: {dataloader.number_of_wakewords()}')
 
