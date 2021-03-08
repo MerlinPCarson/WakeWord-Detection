@@ -85,8 +85,8 @@ def eval_CTC(encoder, decoder, test_generator):
             y_pred += output_batch_labels
             sample_batch = None
 
-    y_pred_class = [0 if y_pred_i == "nnn" else 1 for y_pred_i in y_pred]
-    y_true_class = [0 if y_i == "nnn" else 1 for y_i in y_seq][:len(y_pred_class)]
+    y_pred_class = [0 if y_pred_i == "sns" else 1 for y_pred_i in y_pred]
+    y_true_class = [0 if y_i == "sns" else 1 for y_i in y_seq][:len(y_pred_class)]
     bal_acc = balanced_accuracy_score(y_true_class, y_pred_class)
 
     for metric in METRICS:
@@ -105,8 +105,8 @@ def parse_args():
     :return: Arguments dict.
     '''
     parser = argparse.ArgumentParser(description='Evaluates CRNN model(s).')
-    parser.add_argument('--data_dir', type=str, default='/data/', help='Directory where test data is stored.')
-    parser.add_argument('--model_dir', type=str, default='models/Arik_CRNN_data_original')
+    parser.add_argument('--data_dir', type=str, default='/data_enhanced_silero/', help='Directory where test data is stored.')
+    parser.add_argument('--model_dir', type=str, default='models/Arik_CRNN_data_nosilence_enhanced')
     args = parser.parse_args()
     return args
 

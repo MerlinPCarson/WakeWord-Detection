@@ -27,7 +27,7 @@ class HeySnipsPreprocessed(Sequence):
 
         if ctc:
             self.char2num = layers.experimental.preprocessing.StringLookup(
-                vocabulary=list("nw"), num_oov_indices=0, mask_token=None)
+                vocabulary=list("nws"), num_oov_indices=0, mask_token=None)
 
             self.num2char = layers.experimental.preprocessing.StringLookup(
                 vocabulary=self.char2num.get_vocabulary(), mask_token=None, invert=True)
@@ -59,10 +59,10 @@ class HeySnipsPreprocessed(Sequence):
             if self.ctc:
                 # If this is a wakeword.
                 if label == 1:
-                    y[i] = self.char2num(tf.strings.unicode_split("nwn", input_encoding="UTF-8"))
+                    y[i] = self.char2num(tf.strings.unicode_split("sws", input_encoding="UTF-8"))
                 # If it is not.
                 else:
-                    y[i] = self.char2num(tf.strings.unicode_split("nnn", input_encoding="UTF-8"))
+                    y[i] = self.char2num(tf.strings.unicode_split("sns", input_encoding="UTF-8"))
 
             else:
                 y[i][self.dataset[ID]['label']] = 1
