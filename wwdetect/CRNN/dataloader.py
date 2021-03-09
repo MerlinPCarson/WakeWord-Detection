@@ -56,7 +56,7 @@ class HeySnipsPreprocessed(Sequence):
         if self.ctc:
             y = np.empty((self.batch_size,3), dtype=int)
         else:
-            y = np.empty((self.batch_size), dtype=int)
+            y = np.zeros((self.batch_size,2), dtype=int)
 
         # Generate data
         for i, ID in enumerate(list_IDs_temp):
