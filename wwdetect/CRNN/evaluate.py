@@ -51,11 +51,17 @@ def eval_basics(encoder, decoder, test_generator):
     acc = accuracy_score(y, y_pred_class)
     bal_acc = balanced_accuracy_score(y, y_pred_class)
 
+    stats = {}
     for metric in METRICS:
         metric.update_state(y,y_pred_class)
         print(f"{metric.name}: {metric.result().numpy()}")
+        stats[metric.name] = metric.result().numpy()
     print(f"accuracy: {acc}")
     print(f"balanced accuracy: {bal_acc}")
+    stats["accuracy"] = acc
+    stats["balanced accuracy"] = bal_acc
+    return stats
+
 
 
 def eval_CTC(encoder, decoder, test_generator):
@@ -110,14 +116,20 @@ def parse_args():
     args = parser.parse_args()
     return args
 
-def main(args):
-
+def load_model(encode_path, detect_path):
     encode_model: TFLiteModel = TFLiteModel(
-        model_path=os.path.join(args.model_dir, "encode.tflite")
+        model_path=encode_path
     )
     detect_model: TFLiteModel = TFLiteModel(
-        model_path=os.path.join(args.model_dir, "detect.tflite")
+        model_path=detect_path
     )
+
+    return encode_model, detect_model
+
+def main(args):
+
+    encode_model, detect_model = load_model(os.path.join(args.model_dir, "encode.tflite"),
+                                            os.path.join(args.model_dir, "detect.tflite"))
 
     if "CTC" in args.model_dir:
         test = prep_test_data(args.data_dir, ctc=True, input_features=40, input_frames=151)

@@ -120,21 +120,22 @@ def train_hypermodel(training_generator, dev_generator, early_stopping=False):
                           l_f=L_F,
                           s_t=S_T,
                           s_f=S_F,
-                          r=hp.Int("rnn_layers", 1, 4),
-                          n_r=hp.Int("rnn_units", 16, 64, step=8),
-                          n_f=hp.Int("dense_units", 16, 128, step=16),
-                          dropout=hp.Float("dense_dropout", 0.0, 0.5, step=0.1),
-                          activation=hp.Choice("activation", values=["relu"]))  # Perhaps try other activations?
+                          r=R,
+                          n_r=hp.Int("rnn_units", 16, 64, step=16),
+                          n_f=N_F,
+                          dropout=0.0,
+                          activation=hp.Choice("activation", values=["relu"]),
+                          rnn_type=hp.Choice("rnn_type", values=["gru","lstm"]))  
         model.compile(optimizer=OPTIMIZER,
                       loss=losses.CategoricalCrossentropy(),
-                      metrics=METRICS)
+                      metrics=["acc"])
         model.build(input_shape=(BATCH_SIZE, INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES, 1))
         return model
 
     tuner = Hyperband(
         build_model,
         max_epochs=10,
-        factor=3,
+        factor=2,
         objective="val_loss",
         directory='CRNN_tuning',
         project_name='hyperparam_search')
@@ -158,7 +159,8 @@ def train_hypermodel(training_generator, dev_generator, early_stopping=False):
     model.save_to_tflite()
 
 
-def train_basic(training_generator, dev_generator, early_stopping=False, ctc=True):
+def train_basic(training_generator, dev_generator, early_stopping=False, ctc=True, 
+                positive_percentage=1.0):
     '''
     Train a CRNN model without hyperparameter search. Uses HP
     settings from global variables at top of file. Outputs .h5 and
@@ -189,14 +191,12 @@ def train_basic(training_generator, dev_generator, early_stopping=False, ctc=Tru
 
         model = Arik_CRNN_CTC(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
                           N_C, L_T, L_F, S_T, S_F, R, N_R, N_F,
-                          activation='relu')
+                          activation='relu', positive_percentage=positive_percentage)
         model.compile(optimizer=OPTIMIZER, loss=ctc_loss)
-    # Otherwise, use BCE and single sigmoid output.
-    # TODO: Change to softmax output?
     else:
         model = Arik_CRNN(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
                           N_C, L_T, L_F, S_T, S_F, R, N_R, N_F,
-                          activation='relu')
+                          activation='relu', positive_percentage=positive_percentage)
         model.compile(optimizer=OPTIMIZER, loss=losses.CategoricalCrossentropy(), metrics="accuracy")
 
     model.build(input_shape=(BATCH_SIZE, INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES, 1))
@@ -225,7 +225,7 @@ def parse_args():
     parser.add_argument('--hyperparameter_search', type=bool, default=False)
     parser.add_argument('--early_stopping', type=bool, default=True)
     parser.add_argument('--use_augmented_train', type=bool, default=True)
-    parser.add_argument('--ctc', type=bool, default=True)
+    parser.add_argument('--ctc', type=bool, default=False)
     args = parser.parse_args()
     return args
 
@@ -237,9 +237,9 @@ def main(args):
     :param args: Arguments dict.
     :return: 0
     '''
-    train, dev = data_prep(args.data_dir, args.ctc, )
+    train, dev = data_prep(args.data_dir, args.ctc, use_enhanced=args.use_augmented_train)
     if args.hyperparameter_search:
-        model = train_hypermodel(train, dev, early_stopping=True, use_enhanced=False)
+        model = train_hypermodel(train, dev, early_stopping=True)
     else:
         model = train_basic(train, dev, early_stopping=True, ctc=args.ctc)
     return 0

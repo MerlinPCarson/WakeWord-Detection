@@ -6,7 +6,7 @@ class Arik_CRNN(tf.keras.Model):
     def __init__(self, input_features, input_frames,
                        n_c, l_t, l_f, s_t, s_f, r, n_r,
                        n_f, rnn_type="gru", dropout=0.0,
-                       activation='relu'):
+                       activation='relu', positive_percentage=1.0):
         super(Arik_CRNN, self).__init__()
         # Input shape is (features, timestep/frames).
         # Stride and kernel shape transposed from paper to match input shape.
@@ -16,7 +16,8 @@ class Arik_CRNN(tf.keras.Model):
                         + "conv_filt_" + str(n_c) + "_filt_size_" + str(l_f) + "_" + str(l_t) \
                         + "_stride_" + str(s_f) + "_" + str(s_t) + "_rnn_layers_" + str(r) \
                         + "_rnn_units_" + str(n_r) + "_rnn_type_" + rnn_type + "_dropout_" \
-                        + str(dropout) + "_activation_" + activation + "_silero_data_augmented_"
+                        + str(dropout) + "_activation_" + activation + "_silero_data_augmented_" \
+                        + "_pos_percentage" + str(positive_percentage)
         self.encoder = models.Sequential(name="encoder")
         self.encoder.add(layers.Conv2D(filters=n_c,
                                        kernel_size=(l_f, l_t),
@@ -107,7 +108,7 @@ class Arik_CRNN_CTC(tf.keras.Model):
     def __init__(self, input_features, input_frames,
                        n_c, l_t, l_f, s_t, s_f, r, n_r,
                        n_f, rnn_type="gru", dropout=0.0,
-                       activation='relu'):
+                       activation='relu', positive_percentage=1.0):
         super(Arik_CRNN_CTC, self).__init__()
 
         # Input shape is (features, timestep/frames).
@@ -118,7 +119,9 @@ class Arik_CRNN_CTC(tf.keras.Model):
                         + "conv_filt_" + str(n_c) + "_filt_size_" + str(l_f) + "_" + str(l_t) \
                         + "_stride_" + str(s_f) + "_" + str(s_t) + "_rnn_layers_" + str(r) \
                         + "_rnn_units_" + str(n_r) + "_rnn_type_" + rnn_type + "_dropout_" \
-                        + str(dropout) + "_activation_" + activation
+                        + str(dropout) + "_activation_" + activation + "_pos_percentage" \
+                        + str(positive_percentage)
+
         self.encoder = models.Sequential(name="encoder")
         self.encoder.add(layers.Conv2D(filters=n_c,
                                        kernel_size=(l_f, l_t),
@@ -153,8 +156,8 @@ class Arik_CRNN_CTC(tf.keras.Model):
             self.encoder.add(layers.Bidirectional(layers.LSTM(units=n_r, activation='tanh', return_sequences=True)))
 
         self.detect = models.Sequential(name="detector")
-        self.detect.add(layers.TimeDistributed(layers.Dense(units=3, activation='softmax')))
-        print(self.detect.summary())
+        self.detect.add(layers.TimeDistributed(layers.Dense(units=3, 
+                                                            activation='softmax')))
 
     def call(self, inputs, training=False):
         x = self.encoder(inputs)

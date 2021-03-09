@@ -1,3 +1,4 @@
+from copy import deepcopy
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.utils import Sequence
@@ -16,9 +17,19 @@ class HeySnipsPreprocessed(Sequence):
         self.shuffle = shuffle
         self.n_channels = n_channels
         self.ctc = ctc
+        self.wakeword_ids_all = None
 
         # Load features from h5 files.
         self.dataset, self.ids = self.load_data()
+        self.original_dataset = deepcopy(self.dataset)
+        self.original_ids = deepcopy(self.ids)
+
+        # find ID's of all wakewords in original, non-pruned dataset
+        # shuffle once
+        self.wakeword_ids_all = [id for id in self.original_ids
+                                if self.original_dataset[id]['label'] == 1]
+        np.random.shuffle(self.wakeword_ids_all)
+
         self.on_epoch_end()
 
         if batch_size == 0:
@@ -27,7 +38,7 @@ class HeySnipsPreprocessed(Sequence):
 
         if ctc:
             self.char2num = layers.experimental.preprocessing.StringLookup(
-                vocabulary=list("nws"), num_oov_indices=0, mask_token=None)
+                vocabulary=list("nw"), num_oov_indices=0, mask_token=None)
 
             self.num2char = layers.experimental.preprocessing.StringLookup(
                 vocabulary=self.char2num.get_vocabulary(), mask_token=None, invert=True)
@@ -45,7 +56,7 @@ class HeySnipsPreprocessed(Sequence):
         if self.ctc:
             y = np.empty((self.batch_size,3), dtype=int)
         else:
-            y = np.zeros((self.batch_size,2), dtype=int)
+            y = np.empty((self.batch_size), dtype=int)
 
         # Generate data
         for i, ID in enumerate(list_IDs_temp):
@@ -93,6 +104,7 @@ class HeySnipsPreprocessed(Sequence):
                 keys = list(h5.keys())
                 for key in tqdm(keys):
                     assert dataset.get(key) is None
+
                     dataset[key] = {'label': np.uint8(h5[key].attrs['is_hotword']),
                                     'start_speech': np.int16(h5[key].attrs['speech_start_ts']),
                                     'end_speech': np.int16(h5[key].attrs['speech_end_ts']),
@@ -100,16 +112,47 @@ class HeySnipsPreprocessed(Sequence):
                     ids.append(key)
         return dataset, ids
 
+    def num_samples(self):
+        number_ww = [id for id in self.ids if self.dataset[id]['label'] == 1]
+        number_other = len(self.ids) - len(number_ww)
+        return len(number_ww), number_other
+
+    # Adapted from WaveNet dataloader.
+    def prune_wakewords(self, keep_ratio):
+        num_kept = len(self.wakeword_ids_all)
+        num_removed = 0
+        if keep_ratio != 1.0:
+
+            # Chop off portion of wakewords. If chopped in a previous
+            # pruning, and this round is the same keep ratio or less,
+            # same words will be pruned. This seems like the most
+            # fair comparison.
+            num_kept = int(len(self.wakeword_ids_all)*keep_ratio)
+            wakewords_to_remove = self.wakeword_ids_all[num_kept:]
+
+            # Copy original dataset into current dataset, and
+            # remove the wakewords being removed. Remove from
+            # ID list as well.
+            self.dataset = deepcopy(self.original_dataset)
+            self.ids = deepcopy(self.original_ids)
+            for id in wakewords_to_remove:
+                del self.dataset[id]
+                self.ids.remove(id)
+                num_removed += 1
+
+        return num_kept, num_removed
 
 if __name__ == "__main__":
 
     INPUT_SHAPE_FRAMES = 151
     INPUT_SHAPE_FEATURES = 40
     BATCH_SIZE = 64
-    data_path = "/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data_isolated_enhanced/"
+    data_path = "/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data_speech_isolated/silero/"
 
     dev_generator = HeySnipsPreprocessed([data_path + "dev.h5"], batch_size=BATCH_SIZE,
                                               frame_num=INPUT_SHAPE_FRAMES, feature_num=INPUT_SHAPE_FEATURES)
+    print(dev_generator.prune_wakewords(0.9))
+
     test_generator = HeySnipsPreprocessed([data_path + "test.h5"], batch_size=0,
                                               frame_num=INPUT_SHAPE_FRAMES, feature_num=INPUT_SHAPE_FEATURES)
     training_generator = HeySnipsPreprocessed([data_path + "train.h5", data_path + "train_enhanced.h5"],
