@@ -224,7 +224,7 @@ def parse_args():
     :return: Arguments dict.
     '''
     parser = argparse.ArgumentParser(description='Trains CRNN, outputs model files.')
-    parser.add_argument('--data_dir', type=str, default='/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data_speech_isolated/silero', help='Directory where training data is stored.')
+    parser.add_argument('--data_dir', type=str, default='/data_enhanced_silero', help='Directory where training data is stored.')
     parser.add_argument('--hyperparameter_search', type=bool, default=False)
     parser.add_argument('--early_stopping', type=bool, default=True)
     parser.add_argument('--use_augmented_train', type=bool, default=True)

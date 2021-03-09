@@ -69,7 +69,7 @@ class HeySnipsPreprocessed(Sequence):
             # Store class.
             if self.ctc:
                 # If this is a wakeword.
-                if label == 1:
+                if self.dataset[ID]['label'] == 1:
                     y[i] = self.char2num(tf.strings.unicode_split("sws", input_encoding="UTF-8"))
                 # If it is not.
                 else:
@@ -117,7 +117,6 @@ class HeySnipsPreprocessed(Sequence):
         number_other = len(self.ids) - len(number_ww)
         return len(number_ww), number_other
 
-    # Adapted from WaveNet dataloader.
     def prune_wakewords(self, keep_ratio):
         num_kept = len(self.wakeword_ids_all)
         num_removed = 0
@@ -139,6 +138,9 @@ class HeySnipsPreprocessed(Sequence):
                 del self.dataset[id]
                 self.ids.remove(id)
                 num_removed += 1
+            
+            # Reset indices based on current set of IDs.
+            self.on_epoch_end()
 
         return num_kept, num_removed
 

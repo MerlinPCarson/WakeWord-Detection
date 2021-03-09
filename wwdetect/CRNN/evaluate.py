@@ -53,6 +53,7 @@ def eval_basics(encoder, decoder, test_generator):
 
     stats = {}
     for metric in METRICS:
+        metric.reset_states()
         metric.update_state(y,y_pred_class)
         print(f"{metric.name}: {metric.result().numpy()}")
         stats[metric.name] = metric.result().numpy()
@@ -107,7 +108,7 @@ def parse_args():
     :return: Arguments dict.
     '''
     parser = argparse.ArgumentParser(description='Evaluates CRNN model(s).')
-    parser.add_argument('--data_dir', type=str, default='/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data_speech_isolated/silero', help='Directory where test data is stored.')
+    parser.add_argument('--data_dir', type=str, default='/data_enhanced_silero', help='Directory where test data is stored.')
     parser.add_argument('--model_dir', type=str, default='models/Arik_CRNN_data_nosilence_enhanced')
     args = parser.parse_args()
     return args

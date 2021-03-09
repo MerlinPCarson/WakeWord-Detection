@@ -23,6 +23,7 @@ def wakeword_reduce(args, experiment_num=1):
     Outputs a pickle file containing relevant experimental details and
     results.
     '''
+    print("Running experiment round", experiment_num, "!")
    
     # for reproducability
     random.seed(42)
@@ -52,26 +53,35 @@ def wakeword_reduce(args, experiment_num=1):
 
         # prune 1-keep_ratio of wakewords from training set
         print(f'Pruning wakewords with a keep ratio of {keep_ratio}')
-        train_generator.prune_wakewords(keep_ratio)
+        num_kept, num_removed = train_generator.prune_wakewords(keep_ratio)
         train_wakewords, train_negatives = train_generator.num_samples()
+        assert num_kept == train_wakewords
         print("New number of training wakewords:", train_wakewords, "and negative samples:", train_negatives)
 
-        exps[keep_ratio] = {"num_train_wakewords": train_wakewords,
+        exps[keep_ratio] = {"num_train_wakewords_kept": train_wakewords,
+                            "num_train_wakewords_removed": num_removed,
                             "num_train_negatives": train_negatives,
                             "keep_ratio": keep_ratio}
 
         # train the model with the keep ratio
-        model = train_basic(train_generator, val_generator, args)
+        print("Training model...")
+        model = train_basic(train_generator, val_generator, 
+                            early_stopping=args.early_stopping,
+                            ctc=args.ctc, positive_percentage=keep_ratio)
         model_path = model.pathname
+        print("Model trained!")
 
         # clear out memory
         del model
 
+        print("Loading tflite models...")
         # load .tflite models and evaluate
-        encode_model, decode_model = load_model(os.path.join(args.model_dir, "_encode.tflite"),
-                                                os.path.join(args.model_dir, "_detect.tflite"))
+        encode_model, decode_model = load_model(os.path.join("models", model_path + "_encode.tflite"),
+                                                os.path.join("models", model_path + "_detect.tflite"))
         stats = eval_basics(encode_model, decode_model, test_generator)
         exps[keep_ratio]["stats"] = stats
+
+        print("Evaluation complete!")
     
     pickle.dump(exps, open(f'CRNN-{experiment_num}-wakeword_reduce-exps.npy', 'wb'))
 
@@ -79,4 +89,6 @@ def wakeword_reduce(args, experiment_num=1):
 
 if __name__ == '__main__':
     args = parse_args()
-    sys.exit(wakeword_reduce(args, experiment_num=1))
+    for i in range(1,9):
+        wakeword_reduce(args, experiment_num=i)
+    sys.exit()
