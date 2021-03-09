@@ -17,7 +17,7 @@ class Arik_CRNN(tf.keras.Model):
                         + "_stride_" + str(s_f) + "_" + str(s_t) + "_rnn_layers_" + str(r) \
                         + "_rnn_units_" + str(n_r) + "_rnn_type_" + rnn_type + "_dropout_" \
                         + str(dropout) + "_activation_" + activation + "_silero_data_augmented_" \
-                        + "_pos_percentage" + str(positive_percentage)
+                        + "_pos_percentage_" + str(positive_percentage)
         self.encoder = models.Sequential(name="encoder")
         self.encoder.add(layers.Conv2D(filters=n_c,
                                        kernel_size=(l_f, l_t),
@@ -62,8 +62,8 @@ class Arik_CRNN(tf.keras.Model):
         return x
 
     def save(self):
-        self.encoder.save("models/" + self.pathname + "encode.h5")
-        self.detect.save("models/" + self.pathname +"detect.h5")
+        self.encoder.save("models/" + self.pathname + "_encode.h5")
+        self.detect.save("models/" + self.pathname + "_detect.h5")
 
     def save_to_tflite(self):
         encode_converter = tf.lite.TFLiteConverter.from_keras_model(self.encoder)
@@ -72,10 +72,10 @@ class Arik_CRNN(tf.keras.Model):
         tflite_detect_model = detect_converter.convert()
 
         # Save the model.
-        with open('models/' + self.pathname + 'encode.tflite', 'wb') as f:
+        with open('models/' + self.pathname + '_encode.tflite', 'wb') as f:
             f.write(tflite_encode_model)
 
-        with open('models/' + self.pathname + 'detect.tflite', 'wb') as f:
+        with open('models/' + self.pathname + '_detect.tflite', 'wb') as f:
             f.write(tflite_detect_model)
 
 
@@ -119,7 +119,7 @@ class Arik_CRNN_CTC(tf.keras.Model):
                         + "conv_filt_" + str(n_c) + "_filt_size_" + str(l_f) + "_" + str(l_t) \
                         + "_stride_" + str(s_f) + "_" + str(s_t) + "_rnn_layers_" + str(r) \
                         + "_rnn_units_" + str(n_r) + "_rnn_type_" + rnn_type + "_dropout_" \
-                        + str(dropout) + "_activation_" + activation + "_pos_percentage" \
+                        + str(dropout) + "_activation_" + activation + "_pos_percentage_" \
                         + str(positive_percentage)
 
         self.encoder = models.Sequential(name="encoder")
@@ -165,8 +165,8 @@ class Arik_CRNN_CTC(tf.keras.Model):
         return x
 
     def save(self):
-        self.encoder.save("models/" + self.pathname + "encode.h5")
-        self.detect.save("models/" + self.pathname +"detect.h5")
+        self.encoder.save("models/" + self.pathname + "_encode.h5")
+        self.detect.save("models/" + self.pathname +"_detect.h5")
 
     def save_to_tflite(self):
         encode_converter = tf.lite.TFLiteConverter.from_keras_model(self.encoder)
@@ -175,8 +175,8 @@ class Arik_CRNN_CTC(tf.keras.Model):
         tflite_detect_model = detect_converter.convert()
 
         # Save the model.
-        with open('models/' + self.pathname + 'encode.tflite', 'wb') as f:
+        with open('models/' + self.pathname + '_encode.tflite', 'wb') as f:
             f.write(tflite_encode_model)
 
-        with open('models/' + self.pathname + 'detect.tflite', 'wb') as f:
+        with open('models/' + self.pathname + '_detect.tflite', 'wb') as f:
             f.write(tflite_detect_model)

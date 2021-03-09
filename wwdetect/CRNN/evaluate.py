@@ -28,7 +28,7 @@ METRICS = [
 
 
 def prep_test_data(data_path, input_frames, input_features, ctc):
-    test_generator = HeySnipsPreprocessed([data_path + "test.h5"],
+    test_generator = HeySnipsPreprocessed([os.path.join(data_path, "test.h5")],
                                            batch_size=0,
                                            frame_num=input_frames,
                                            feature_num=input_features,
@@ -107,7 +107,7 @@ def parse_args():
     :return: Arguments dict.
     '''
     parser = argparse.ArgumentParser(description='Evaluates CRNN model(s).')
-    parser.add_argument('--data_dir', type=str, default='/data_enhanced_silero/', help='Directory where test data is stored.')
+    parser.add_argument('--data_dir', type=str, default='/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data_speech_isolated/silero', help='Directory where test data is stored.')
     parser.add_argument('--model_dir', type=str, default='models/Arik_CRNN_data_nosilence_enhanced')
     args = parser.parse_args()
     return args
@@ -124,8 +124,8 @@ def load_model(encode_path, detect_path):
 
 def main(args):
 
-    encode_model, detect_model = load_model(os.path.join(args.model_dir, "encode.tflite"),
-                                            os.path.join(args.model_dir, "detect.tflite"))
+    encode_model, detect_model = load_model(os.path.join(args.model_dir, "_encode.tflite"),
+                                            os.path.join(args.model_dir, "_detect.tflite"))
 
     if "CTC" in args.model_dir:
         test = prep_test_data(args.data_dir, ctc=True, input_features=40, input_frames=151)

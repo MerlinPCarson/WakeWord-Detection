@@ -2,6 +2,7 @@
 Module for training CRNN model on wakeword.
 '''
 
+import os
 import sys
 import argparse
 
@@ -72,14 +73,16 @@ def data_prep(data_path, ctc=False, use_enhanced=False):
     :param ctc: Using CTC loss or not.
     :return: Training generator and development generator.
     '''
-    dev_generator = HeySnipsPreprocessed([data_path + "dev.h5"], batch_size=BATCH_SIZE,
-                                                                 frame_num=INPUT_SHAPE_FRAMES,
-                                                                 feature_num=INPUT_SHAPE_FEATURES,
-                                                                 ctc=ctc)
+    dev_generator = HeySnipsPreprocessed([os.path.join(data_path, "dev.h5")],
+                                         batch_size=BATCH_SIZE,
+                                         frame_num=INPUT_SHAPE_FRAMES,
+                                         feature_num=INPUT_SHAPE_FEATURES,
+                                         ctc=ctc)
     if use_enhanced:
-        train_paths = [data_path + "train.h5", data_path + "train_enhanced.h5"]
+        train_paths = [os.path.join(data_path, "train.h5"),
+                       os.path.join(data_path, "train_enhanced.h5")]
     else:
-        train_paths = [data_path + "train.h5"]          
+        train_paths = [os.path.join(data_path, "train.h5")]
 
     training_generator = HeySnipsPreprocessed(train_paths,
                                               batch_size=BATCH_SIZE,
@@ -159,7 +162,7 @@ def train_hypermodel(training_generator, dev_generator, early_stopping=False):
     model.save_to_tflite()
 
 
-def train_basic(training_generator, dev_generator, early_stopping=False, ctc=True, 
+def train_basic(training_generator, dev_generator, early_stopping=False, ctc=False,
                 positive_percentage=1.0):
     '''
     Train a CRNN model without hyperparameter search. Uses HP
@@ -221,7 +224,7 @@ def parse_args():
     :return: Arguments dict.
     '''
     parser = argparse.ArgumentParser(description='Trains CRNN, outputs model files.')
-    parser.add_argument('--data_dir', type=str, default='/data_enhanced_silero/', help='Directory where training data is stored.')
+    parser.add_argument('--data_dir', type=str, default='/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data_speech_isolated/silero', help='Directory where training data is stored.')
     parser.add_argument('--hyperparameter_search', type=bool, default=False)
     parser.add_argument('--early_stopping', type=bool, default=True)
     parser.add_argument('--use_augmented_train', type=bool, default=True)
@@ -241,7 +244,7 @@ def main(args):
     if args.hyperparameter_search:
         model = train_hypermodel(train, dev, early_stopping=True)
     else:
-        model = train_basic(train, dev, early_stopping=True, ctc=args.ctc)
+        model = train_basic(train, dev, early_stopping=args.early_stopping, ctc=args.ctc)
     return 0
 
 
