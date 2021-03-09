@@ -100,10 +100,6 @@ def eval_CTC(encoder, decoder, test_generator):
         print(f"{metric.name}: {metric.result().numpy()}")
     print(f"balanced accuracy: {bal_acc}")
 
-
-def load_model():
-    raise NotImplementedError
-
 def parse_args():
     '''
     Parse commandline arguments.
