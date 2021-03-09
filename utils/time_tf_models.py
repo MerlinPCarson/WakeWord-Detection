@@ -47,7 +47,6 @@ def time_tf_lite_models(encode, detect, num_runs):
 
     # Create random input vector
     X_shape = encode_input_details[0]['shape']
-    print(X_shape)
     X = np.array(np.random.random_sample(X_shape), dtype=np.float32)
 
     # prime TF-Lite models, first time is slow
