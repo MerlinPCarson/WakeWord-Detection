@@ -5,7 +5,7 @@ import time
 import argparse
 import numpy as np
 
-from timeit import timeit
+from tqdm import tqdm 
 
 from tensorflow.keras.models import load_model
 import tensorflow.lite as tflite
@@ -26,7 +26,7 @@ def time_tf_model(model, num_timesteps, num_features, model_type, num_runs):
     model.predict(X)
 
     total_time = 0.0
-    for _ in range(num_runs):
+    for _ in tqdm(range(num_runs)):
         start = time.perf_counter() 
         model.predict(X)
         total_time += time.perf_counter() - start
@@ -57,7 +57,7 @@ def time_tf_lite_models(encode, detect, num_runs):
 
     # get average inference time
     total_time = 0.0
-    for _ in range(num_runs):
+    for _ in tqdm(range(num_runs)):
         start = time.perf_counter() 
 
         encode.set_tensor(encode_input_details[0]['index'], X)
@@ -73,7 +73,7 @@ def load_wavenet(model_dir):
     return load_model(args.tf_model_dir)
 
 def load_crnn(model_dir):
-    pass
+    return load_model(args.tf_model_dir)
 
 def load_tensorflow_model(model_dir, model_type):
     # load the appropriate model type
@@ -90,6 +90,7 @@ def time_models(args):
     tf_model = load_tensorflow_model(args.tf_model_dir, args.model_type)
 
     # run timings on Tensorflow model
+    print(f'Running timings on Tensorflow {args.model_type} model')
     avg_time_tf = time_tf_model(tf_model, args.timesteps, args.num_features, args.model_type, args.num_runs)
 
     print(f'Tensorflow average time: {avg_time_tf} secs')
@@ -99,6 +100,7 @@ def time_models(args):
     tf_lite_detect = tflite.Interpreter(model_path=os.path.join(args.tf_lite_model_dir, 'detect.tflite'))
 
     # run timings on Tensorflow Lite models
+    print(f'Running timings on Tensorflow-Lite {args.model_type} models')
     avg_time_tf_lite = time_tf_lite_models(tf_lite_encode, tf_lite_detect, args.num_runs)
 
     print(f'TF-Lite average time: {avg_time_tf_lite} secs')
