@@ -125,8 +125,8 @@ def load_model(encode_path, detect_path):
 
 def main(args):
 
-    encode_model, detect_model = load_model(os.path.join(args.model_dir, "_encode.tflite"),
-                                            os.path.join(args.model_dir, "_detect.tflite"))
+    encode_model, detect_model = load_model(os.path.join(args.model_dir, "encode.tflite"),
+                                            os.path.join(args.model_dir, "detect.tflite"))
 
     if "CTC" in args.model_dir:
         test = prep_test_data(args.data_dir, ctc=True, input_features=40, input_frames=151)
