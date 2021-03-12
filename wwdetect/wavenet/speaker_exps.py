@@ -63,7 +63,7 @@ def main(args):
         print(f'Number of wakewords examples in training set {trainset.number_of_wakewords()}')
 
         # train the model with the keep ratio
-        #train(trainset, valset, args)
+        train(trainset, valset, args)
 
         # save stats to experiment metadata
         exps['keep_ratios'].append(keep_ratio)

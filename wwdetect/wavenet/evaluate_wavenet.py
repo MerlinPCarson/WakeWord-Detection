@@ -18,8 +18,8 @@ def experiment_models(exp_file):
     # load experiment model names from experiment metadata 
     exps = pickle.load(open(exp_file,'rb'))
     base_name = os.path.join(os.path.dirname(exp_file), exps['model_name'])
-    eval_models = [f'{base_name}_{exp}' for exp in exps['keep_ratios']]
-    return eval_models, exps['num_wakeword']
+    eval_models = [f'{base_name}_{exp:.2f}' for exp in exps['keep_ratios']]
+    return eval_models
 
 def evaluate_model(model, testset, zip_missed=False):
     preds = model.predict(testset, verbose=1)
@@ -104,7 +104,7 @@ def main(args):
         eval_models = args.eval_model.split(',')
     else:
         # load model names from experiment metadata file
-        eval_models, _ = experiment_models(args.eval_file)
+        eval_models = experiment_models(args.eval_file)
 
     for model in eval_models:
         print(f'Evaluating model {model}')
