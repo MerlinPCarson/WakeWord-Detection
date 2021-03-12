@@ -38,10 +38,12 @@ class HeySnipsPreprocessed(Sequence):
 
         if ctc:
             self.char2num = layers.experimental.preprocessing.StringLookup(
-                vocabulary=list("nw"), num_oov_indices=0, mask_token=None)
+                oov_token='[BLANK]', vocabulary=['[NEGATIVE]', 'hey', 'snips'],
+                num_oov_indices=0, mask_token=None)
 
             self.num2char = layers.experimental.preprocessing.StringLookup(
-                vocabulary=self.char2num.get_vocabulary(), mask_token=None, invert=True)
+                oov_token='[BLANK]', vocabulary=self.char2num.get_vocabulary(),
+                num_oov_indices=0, mask_token=None, invert=True)
 
     # Shuffles data after every epoch.
     def on_epoch_end(self):
@@ -70,10 +72,10 @@ class HeySnipsPreprocessed(Sequence):
             if self.ctc:
                 # If this is a wakeword.
                 if self.dataset[ID]['label'] == 1:
-                    y[i] = self.char2num(tf.strings.unicode_split("sws", input_encoding="UTF-8"))
+                    y[i] = self.char2num(['hey','snips'])
                 # If it is not.
                 else:
-                    y[i] = self.char2num(tf.strings.unicode_split("sns", input_encoding="UTF-8"))
+                    y[i] = self.char2num(['[NEGATIVE]'])
 
             else:
                 y[i][self.dataset[ID]['label']] = 1
@@ -178,7 +180,8 @@ if __name__ == "__main__":
     data_path = "/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data_speech_isolated/silero/"
 
     dev_generator = HeySnipsPreprocessed([data_path + "dev.h5"], batch_size=BATCH_SIZE,
-                                              frame_num=INPUT_SHAPE_FRAMES, feature_num=INPUT_SHAPE_FEATURES)
+                                          frame_num=INPUT_SHAPE_FRAMES, feature_num=INPUT_SHAPE_FEATURES,
+                                          ctc=True)
     print(dev_generator.prune_wakewords(0.9))
 
     test_generator = HeySnipsPreprocessed([data_path + "test.h5"], batch_size=0,

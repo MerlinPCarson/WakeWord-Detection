@@ -108,7 +108,8 @@ class Arik_CRNN_CTC(tf.keras.Model):
     def __init__(self, input_features, input_frames,
                        n_c, l_t, l_f, s_t, s_f, r, n_r,
                        n_f, rnn_type="gru", dropout=0.0,
-                       activation='relu', positive_percentage=1.0):
+                       activation='relu', positive_percentage=1.0,
+                       num_ctc_labels=4):
         super(Arik_CRNN_CTC, self).__init__()
 
         # Input shape is (features, timestep/frames).
@@ -156,7 +157,7 @@ class Arik_CRNN_CTC(tf.keras.Model):
             self.encoder.add(layers.Bidirectional(layers.LSTM(units=n_r, activation='tanh', return_sequences=True)))
 
         self.detect = models.Sequential(name="detector")
-        self.detect.add(layers.TimeDistributed(layers.Dense(units=3, 
+        self.detect.add(layers.TimeDistributed(layers.Dense(units=num_ctc_labels,
                                                             activation='softmax')))
 
     def call(self, inputs, training=False):
