@@ -39,11 +39,11 @@ class HeySnipsPreprocessed(Sequence):
         if ctc:
             self.char2num = layers.experimental.preprocessing.StringLookup(
                 oov_token='[BLANK]', vocabulary=['[NEGATIVE]', 'hey', 'snips'],
-                num_oov_indices=0, mask_token=None)
+                num_oov_indices=1, mask_token=None)
 
             self.num2char = layers.experimental.preprocessing.StringLookup(
                 oov_token='[BLANK]', vocabulary=self.char2num.get_vocabulary(),
-                num_oov_indices=0, mask_token=None, invert=True)
+                num_oov_indices=1, mask_token=None, invert=True)
 
     # Shuffles data after every epoch.
     def on_epoch_end(self):
@@ -56,7 +56,7 @@ class HeySnipsPreprocessed(Sequence):
         # Initialization
         X = np.zeros((self.batch_size, self.feature_num, self.frame_num, self.n_channels))
         if self.ctc:
-            y = np.empty((self.batch_size,3), dtype=int)
+            y = np.empty((self.batch_size,2), dtype=int)
         else:
             y = np.zeros((self.batch_size,2), dtype=int)
 
@@ -75,7 +75,10 @@ class HeySnipsPreprocessed(Sequence):
                     y[i] = self.char2num(['hey','snips'])
                 # If it is not.
                 else:
-                    y[i] = self.char2num(['[NEGATIVE]'])
+                    # Blank will be mapped to zero, and not
+                    # counted as an actual symbol when computing
+                    # loss.
+                    y[i] = self.char2num(['[NEGATIVE]', '[BLANK]'])
 
             else:
                 y[i][self.dataset[ID]['label']] = 1

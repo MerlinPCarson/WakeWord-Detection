@@ -104,8 +104,7 @@ def train_hypermodel(training_generator, dev_generator, early_stopping=False):
     :param training_generator: Generator which outputs preprocessed training dataset.
     :param dev_generator: Generator which outputs preprocessed development dataset.
     :param early_stopping: Use early stopping or not.
-    :return: Final trained model object.
-    '''
+    :return: Final trained model object.'''
 
     callbacks = [ReduceLROnPlateau(monitor="val_loss", patience=3,
                                    factor=0.03, min_lr=DROPPED_LR),
@@ -188,13 +187,28 @@ def train_basic(training_generator, dev_generator, early_stopping=False, ctc=Fal
     # If using CTC loss.
     if ctc:
         def ctc_loss(y_true, y_pred):
-            input_length = tf.fill((BATCH_SIZE,1),19)
-            label_length = tf.fill((BATCH_SIZE,1),3)
-            return backend.ctc_batch_cost(y_true, y_pred, input_length, label_length)
+            # Tensor of shape (batch_size), where values
+            # correspond to the length of the label sequence.
+            # This will make sure that input label sequences
+            # we padded with zeros are only counted as the
+            # length of their ACTUAL labels.
+            label_length = tf.squeeze(tf.math.count_nonzero(y_true, axis=-1, keepdims=True))
+
+            # Tensor shape (batch_size), where values
+            # correspond to length of input sequence.
+            # This is always the same in our case.
+            logit_length = tf.squeeze(tf.fill((BATCH_SIZE,1),19))
+
+            # Blank index is assumed to be zero.
+            return tf.nn.ctc_loss(labels = y_true, logits = y_pred,
+                                  label_length = label_length,
+                                  logit_length = logit_length,
+                                  logits_time_major=False)
 
         model = Arik_CRNN_CTC(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
                           N_C, L_T, L_F, S_T, S_F, R, N_R, N_F,
-                          activation='relu', positive_percentage=positive_percentage)
+                          activation='relu', positive_percentage=positive_percentage,
+                          num_ctc_labels=4)
         model.compile(optimizer=OPTIMIZER, loss=ctc_loss)
     else:
         model = Arik_CRNN(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
@@ -212,7 +226,7 @@ def train_basic(training_generator, dev_generator, early_stopping=False, ctc=Fal
               callbacks = [callbacks])
 
     model.load_weights("best")
-    model.save()
+    model.save_separate()
     model.save_to_tflite()
     return model
 
@@ -224,11 +238,11 @@ def parse_args():
     :return: Arguments dict.
     '''
     parser = argparse.ArgumentParser(description='Trains CRNN, outputs model files.')
-    parser.add_argument('--data_dir', type=str, default='/data_enhanced_silero', help='Directory where training data is stored.')
+    parser.add_argument('--data_dir', type=str, default='/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data_speech_isolated/silero', help='Directory where training data is stored.')
     parser.add_argument('--hyperparameter_search', type=bool, default=False)
     parser.add_argument('--early_stopping', type=bool, default=True)
     parser.add_argument('--use_augmented_train', type=bool, default=True)
-    parser.add_argument('--ctc', type=bool, default=False)
+    parser.add_argument('--ctc', type=bool, default=True)
     args = parser.parse_args()
     return args
 

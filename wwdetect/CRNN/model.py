@@ -61,7 +61,7 @@ class Arik_CRNN(tf.keras.Model):
         x = self.detect(x)
         return x
 
-    def save(self):
+    def save_separate(self):
         self.encoder.save("models/" + self.pathname + "_encode.h5")
         self.detect.save("models/" + self.pathname + "_detect.h5")
 
@@ -157,7 +157,7 @@ class Arik_CRNN_CTC(tf.keras.Model):
             self.encoder.add(layers.Bidirectional(layers.LSTM(units=n_r, activation='tanh', return_sequences=True)))
 
         self.detect = models.Sequential(name="detector")
-        self.detect.add(layers.TimeDistributed(layers.Dense(units=num_ctc_labels,
+        self.detect.add(layers.TimeDistributed(layers.Dense(units=4,
                                                             activation='softmax')))
 
     def call(self, inputs, training=False):
@@ -165,7 +165,7 @@ class Arik_CRNN_CTC(tf.keras.Model):
         x = self.detect(x)
         return x
 
-    def save(self):
+    def save_separate(self):
         self.encoder.save("models/" + self.pathname + "_encode.h5")
         self.detect.save("models/" + self.pathname +"_detect.h5")
 
