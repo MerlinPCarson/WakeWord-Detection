@@ -99,6 +99,7 @@ class HeySnipsPreprocessed(Sequence):
     def load_data(self):
         dataset = {}
         ids = []
+        self.speakers = []
         for path in self.h5_paths:
             with h5py.File(path, 'r') as h5:
                 keys = list(h5.keys())
@@ -106,16 +107,22 @@ class HeySnipsPreprocessed(Sequence):
                     assert dataset.get(key) is None
 
                     dataset[key] = {'label': np.uint8(h5[key].attrs['is_hotword']),
+                                    'speaker': np.int16(h5[key].attrs['speaker']),
                                     'start_speech': np.int16(h5[key].attrs['speech_start_ts']),
                                     'end_speech': np.int16(h5[key].attrs['speech_end_ts']),
                                     'features': np.array(h5[key][()], dtype=np.float32)}
                     ids.append(key)
+                    self.speakers.append(np.int16(h5[key].attrs['speaker']))
+        self.speakers = self.all_speakers = sorted(list(set(self.speakers)))
         return dataset, ids
 
     def num_samples(self):
         number_ww = [id for id in self.ids if self.dataset[id]['label'] == 1]
         number_other = len(self.ids) - len(number_ww)
         return len(number_ww), number_other
+
+    def num_speakers(self):
+        return len(list(set(self.speakers)))
 
     def prune_wakewords(self, keep_ratio):
         num_kept = len(self.wakeword_ids_all)
@@ -142,7 +149,26 @@ class HeySnipsPreprocessed(Sequence):
             # Reset indices based on current set of IDs.
             self.on_epoch_end()
 
-        return num_kept, num_removed
+    def prune_speakers(self, keep_ratio):
+
+        # find maximum speaker ID to keep
+        max_speaker_id = int(len(self.all_speakers) * keep_ratio)
+        self.speakers = [speaker for speaker in self.all_speakers
+                         if speaker <= max_speaker_id]
+
+        # Copy original dataset into current dataset, and
+        # remove the wakewords being removed. Remove from
+        # ID list as well.
+        self.dataset = {}
+        self.ids = []
+        for id, data in self.original_dataset.items():
+            if data['speaker'] in self.speakers:
+                self.dataset[id] = data
+                self.ids.append(id)
+
+        # Reset indices based on current set of IDs.
+        self.on_epoch_end()
+
 
 if __name__ == "__main__":
 
