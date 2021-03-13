@@ -154,6 +154,8 @@ class HeySnipsPreprocessed(Sequence):
             # Reset indices based on current set of IDs.
             self.on_epoch_end()
 
+        return num_kept
+
     def prune_speakers(self, keep_ratio):
 
         # find maximum speaker ID to keep

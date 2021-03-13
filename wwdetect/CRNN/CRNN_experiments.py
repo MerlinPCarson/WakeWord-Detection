@@ -10,6 +10,12 @@ import numpy as np
 os.environ['TF_CUDNN_DETERMINISTIC']='1'
 import tensorflow as tf
 
+# prevent CUDA out of memory errors
+gpus = tf.config.experimental.list_physical_devices('GPU')
+for gpu in range(len(gpus)):
+    tf.config.experimental.set_memory_growth(gpus[gpu], True)
+
+
 from train import parse_args, train_basic, data_prep
 from train import INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES
 from evaluate import prep_test_data, eval_basics, load_model
@@ -51,7 +57,7 @@ def speaker_reduce(args, experiment_num=1):
         print(f'Pruning speakers with a keep ratio of {keep_ratio}')
         train_generator.prune_speakers(keep_ratio)
         train_speakers = train_generator.num_speakers()
-        train_wakewords, train_negatives = train_wakewords.num_samples()
+        train_wakewords, train_negatives = train_generator.num_samples()
         print("New number of training speakers:", train_speakers)
 
         exps[keep_ratio] = {"num_train_speakers": train_speakers,
@@ -60,9 +66,11 @@ def speaker_reduce(args, experiment_num=1):
 
         # train the model with the keep ratio
         print("Training model...")
+
         model = train_basic(train_generator, val_generator,
                             early_stopping=args.early_stopping,
                             ctc=args.ctc, positive_percentage=keep_ratio)
+
         model_path = model.pathname
         print("Model trained!")
 
@@ -119,21 +127,22 @@ def wakeword_reduce(args, experiment_num=1):
 
         # prune 1-keep_ratio of wakewords from training set
         print(f'Pruning wakewords with a keep ratio of {keep_ratio}')
-        num_kept, num_removed = train_generator.prune_wakewords(keep_ratio)
+        num_kept = train_generator.prune_wakewords(keep_ratio)
         train_wakewords, train_negatives = train_generator.num_samples()
         assert num_kept == train_wakewords
         print("New number of training wakewords:", train_wakewords, "and negative samples:", train_negatives)
 
         exps[keep_ratio] = {"num_train_wakewords_kept": train_wakewords,
-                            "num_train_wakewords_removed": num_removed,
                             "num_train_negatives": train_negatives,
                             "keep_ratio": keep_ratio}
 
         # train the model with the keep ratio
         print("Training model...")
+
         model = train_basic(train_generator, val_generator, 
-                            early_stopping=args.early_stopping,
-                            ctc=args.ctc, positive_percentage=keep_ratio)
+                        early_stopping=args.early_stopping,
+                        ctc=args.ctc, positive_percentage=keep_ratio)
+
         model_path = model.pathname
         print("Model trained!")
 
@@ -156,5 +165,8 @@ def wakeword_reduce(args, experiment_num=1):
 if __name__ == '__main__':
     args = parse_args()
     for i in range(1,9):
-        speaker_reduce(args, experiment_num=i)
+        if args.exp_type == 'speaker_reduce':
+            speaker_reduce(args, experiment_num=i)
+        elif args.exp_type == 'wakeword_reduce':
+            wakeword_reduce(args, experiment_num=i)
     sys.exit()

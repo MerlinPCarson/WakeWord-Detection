@@ -12,7 +12,7 @@ from tensorflow.keras import optimizers, metrics, losses, backend
 from tensorflow.keras.callbacks import EarlyStopping, \
                                        ReduceLROnPlateau, \
                                        ModelCheckpoint
-from kerastuner.tuners import Hyperband
+#from kerastuner.tuners import Hyperband
 
 from model import Arik_CRNN, Arik_CRNN_CTC
 from dataloader import HeySnipsPreprocessed
@@ -242,7 +242,9 @@ def parse_args():
     parser.add_argument('--hyperparameter_search', type=bool, default=False)
     parser.add_argument('--early_stopping', type=bool, default=True)
     parser.add_argument('--use_augmented_train', type=bool, default=True)
-    parser.add_argument('--ctc', type=bool, default=True)
+    parser.add_argument('--ctc', default=False, action='store_true')
+    parser.add_argument('--exp_type', type=str, default='speaker_reduce', choices=['speaker_reduce','wakeword_reduce'], 
+                        help='Type of experiment to run using CRNN experiments script.') 
     args = parser.parse_args()
     return args
 
