@@ -63,37 +63,22 @@ def eval_basics(encoder, decoder, test_generator):
     stats["balanced accuracy"] = bal_acc
     return stats
 
-
-
 def eval_CTC(encoder, decoder, test_generator):
     X, y = test_generator[0]
     X = X.astype(np.float32)
-    y_seq = [tf.strings.reduce_join(test_generator.num2char(y_i+1)).numpy().decode("utf-8") for y_i in y]
+    y_seq = [tf.strings.reduce_join(test_generator.num2char(y_i)).numpy().decode("utf-8") for y_i in y]
     y_pred = []
-    sample_batch = None
     for sample in tqdm(X):
         sample = np.expand_dims(sample, axis=0)
-        y_pred_sample = encoder(sample)[0]
-        if sample_batch is None:
-            sample_batch = np.array(y_pred_sample)
-        else:
-            sample_batch = np.concatenate((sample_batch, y_pred_sample), axis=0)
+        y_encode_sample = encoder(sample)[0]
+        y_decode_sample = decoder(y_encode_sample)[0]
+        input_len = np.ones(y_decode_sample.shape[0]) * y_decode_sample.shape[1]
+        result = tf.keras.backend.ctc_decode(y_decode_sample, input_length=input_len, greedy=True)[0][0][:, :4]
+        result_labels = "".join(test_generator.num2char(result[0].numpy()))
+        y_pred += [result_labels]
 
-        if sample_batch.shape[0] == 64:
-            y_decode_batch = decoder(sample_batch)[0]
-            input_len = np.ones(y_decode_batch.shape[0]) * y_decode_batch.shape[1]
-            results = tf.keras.backend.ctc_decode(y_decode_batch, input_length=input_len, greedy=True)[0][0][:, :3]
-            output_batch_labels = []
-            for result in results:
-                # This char2num/num2char isn't working as expected, is not invertable.
-                # Adding 1 is a quick fix
-                result = tf.strings.reduce_join(test_generator.num2char(result+1)).numpy().decode("utf-8")
-                output_batch_labels.append(result)
-            y_pred += output_batch_labels
-            sample_batch = None
-
-    y_pred_class = [0 if y_pred_i == "sns" else 1 for y_pred_i in y_pred]
-    y_true_class = [0 if y_i == "sns" else 1 for y_i in y_seq][:len(y_pred_class)]
+    y_pred_class = [1 if y_pred_i == "[SILENCE]heysnips[SILENCE]" else 0 for y_pred_i in y_pred]
+    y_true_class = [1 if y_i == "[SILENCE]heysnips[SILENCE]" else 0 for y_i in y_seq]
     bal_acc = balanced_accuracy_score(y_true_class, y_pred_class)
 
     for metric in METRICS:
@@ -108,8 +93,8 @@ def parse_args():
     :return: Arguments dict.
     '''
     parser = argparse.ArgumentParser(description='Evaluates CRNN model(s).')
-    parser.add_argument('--data_dir', type=str, default='/data_enhanced_silero', help='Directory where test data is stored.')
-    parser.add_argument('--model_dir', type=str, default='models/Arik_CRNN_data_nosilence_enhanced')
+    parser.add_argument('--data_dir', type=str, default='/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data_speech_isolated/silero', help='Directory where test data is stored.')
+    parser.add_argument('--model_dir', type=str, default='CTC_models/keras_4_seq_silence_better_labeling/for_inference')
     args = parser.parse_args()
     return args
 
