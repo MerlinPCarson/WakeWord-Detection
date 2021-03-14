@@ -72,7 +72,7 @@ def parse_args():
     parser.add_argument('--lr', type=float, default=1e-4, help='Starting learning rate')
     parser.add_argument('--l2', type=float, default=1e-2, help='L2 regularization coefficient')
     parser.add_argument('--num_features', type=float, default=40, help='Number of features per-timestep')
-    parser.add_argument('--timesteps', type=int, default=182, help='Number of timesteps per example, None for variable length')
+    parser.add_argument('--timesteps', type=int, help='Number of timesteps per example, None for variable length')
     parser.add_argument('--seed', type=int, default=9999, help='Random seed for training')
     parser.add_argument('--eval_model', type=str, default='models/wavenet', 
                                     help='Location of model to evaluate (use comma seperated list to evaluate multiple models)')
