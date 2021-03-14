@@ -208,6 +208,8 @@ def plot_compare_pruning_exps(wavenet_results, CRNN_results, exp_vals, exp_type,
     plt.tight_layout()
     plt.legend()
 
+    # save figure
+    plt.savefig(f'Exp-{exp_type}-{metric}.pdf')
     # show the graph 
     plt.show()
 
