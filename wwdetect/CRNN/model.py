@@ -157,7 +157,7 @@ class Arik_CRNN_CTC(tf.keras.Model):
             self.encoder.add(layers.Bidirectional(layers.LSTM(units=n_r, activation='tanh', return_sequences=True)))
 
         self.detect = models.Sequential(name="detector")
-        self.detect.add(layers.TimeDistributed(layers.Dense(units=4,
+        self.detect.add(layers.TimeDistributed(layers.Dense(units=num_ctc_labels,
                                                             activation='softmax')))
 
     def call(self, inputs, training=False):

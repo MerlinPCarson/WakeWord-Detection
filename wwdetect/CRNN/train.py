@@ -10,8 +10,8 @@ import tensorflow as tf
 from tensorflow.random import set_seed
 from tensorflow.keras import optimizers, metrics, losses, backend
 from tensorflow.keras.callbacks import EarlyStopping, \
-                                       ReduceLROnPlateau, \
-                                       ModelCheckpoint
+    ReduceLROnPlateau, \
+    ModelCheckpoint
 from kerastuner.tuners import Hyperband
 
 from model import Arik_CRNN, Arik_CRNN_CTC
@@ -29,19 +29,19 @@ set_seed(42)
 #             a huge deal.
 
 # Convolutional layer parameters:
-N_C = 32                # Number of filters in convolutional layer.
-L_T = 20                # Filter size (time dimension).
-L_F = 5                 # Filter size (frequency dimension).
-S_T = 8                 # Stride (time dimension).
-S_F = 2                 # Stride (frequency dimension).
+N_C = 32  # Number of filters in convolutional layer.
+L_T = 20  # Filter size (time dimension).
+L_F = 5  # Filter size (frequency dimension).
+S_T = 8  # Stride (time dimension).
+S_F = 2  # Stride (frequency dimension).
 
 # Recurrent layer(s) parameters:
-R = 2                   # Number of recurrent layers.
-N_R = 32                 # Number of hidden units.
-RNN_TYPE = "gru"        # Use GRU or LSTM for recurrent units.
+R = 2  # Number of recurrent layers.
+N_R = 32  # Number of hidden units.
+RNN_TYPE = "gru"  # Use GRU or LSTM for recurrent units.
 
 # Dense layer parameters:
-N_F = 64                # Number of hidden units.
+N_F = 64  # Number of hidden units.
 
 # Training hyperparameters:
 OPTIMIZER = optimizers.Adam()
@@ -55,13 +55,13 @@ INPUT_SHAPE_FRAMES = 151
 
 # Metrics used for non-CTC model.
 METRICS = [
-      metrics.TruePositives(name='tp'),
-      metrics.FalsePositives(name='fp'),
-      metrics.TrueNegatives(name='tn'),
-      metrics.FalseNegatives(name='fn'),
-      "accuracy",
-      metrics.Precision(name='precision'),
-      metrics.Recall(name='recall')
+    metrics.TruePositives(name='tp'),
+    metrics.FalsePositives(name='fp'),
+    metrics.TrueNegatives(name='tn'),
+    metrics.FalseNegatives(name='fn'),
+    "accuracy",
+    metrics.Precision(name='precision'),
+    metrics.Recall(name='recall')
 ]
 
 
@@ -127,7 +127,7 @@ def train_hypermodel(training_generator, dev_generator, early_stopping=False):
                           n_f=N_F,
                           dropout=0.0,
                           activation=hp.Choice("activation", values=["relu"]),
-                          rnn_type=hp.Choice("rnn_type", values=["gru","lstm"]))  
+                          rnn_type=hp.Choice("rnn_type", values=["gru", "lstm"]))
         model.compile(optimizer=OPTIMIZER,
                       loss=losses.CategoricalCrossentropy(),
                       metrics=["acc"])
@@ -176,13 +176,13 @@ def train_basic(training_generator, dev_generator, early_stopping=False, ctc=Fal
     '''
 
     callbacks = [ReduceLROnPlateau(monitor="val_loss", patience=3,
-                                     factor=0.03, min_lr=DROPPED_LR),
-                   ModelCheckpoint(filepath="best", save_best_only=True,
-                                   monitor="val_loss", mode="min")]
+                                   factor=0.03, min_lr=DROPPED_LR),
+                 ModelCheckpoint(filepath="best", save_best_only=True,
+                                 monitor="val_loss", mode="min",
+                                 save_weights_only=True)]
 
     if early_stopping:
-      callbacks = [EarlyStopping(monitor="val_loss", patience=6)] + callbacks
-
+        callbacks = [EarlyStopping(monitor="val_loss", patience=6)] + callbacks
 
     # If using CTC loss.
     if ctc:
@@ -192,23 +192,22 @@ def train_basic(training_generator, dev_generator, early_stopping=False, ctc=Fal
             # This will make sure that input label sequences
             # we padded with zeros are only counted as the
             # length of their ACTUAL labels.
-            label_length = tf.squeeze(tf.math.count_nonzero(y_true, axis=-1, keepdims=True))
+            label_length = tf.math.count_nonzero(y_true + 1, axis=-1, keepdims=True)
 
             # Tensor shape (batch_size), where values
             # correspond to length of input sequence.
             # This is always the same in our case.
-            logit_length = tf.squeeze(tf.fill((BATCH_SIZE,1),19))
+            input_length = tf.fill((BATCH_SIZE, 1), 19)
 
             # Blank index is assumed to be zero.
-            return tf.nn.ctc_loss(labels = y_true, logits = y_pred,
-                                  label_length = label_length,
-                                  logit_length = logit_length,
-                                  logits_time_major=False)
+            return tf.keras.backend.ctc_batch_cost(y_true=y_true, y_pred=y_pred,
+                                                   input_length=input_length,
+                                                   label_length=label_length)
 
         model = Arik_CRNN_CTC(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
-                          N_C, L_T, L_F, S_T, S_F, R, N_R, N_F,
-                          activation='relu', positive_percentage=positive_percentage,
-                          num_ctc_labels=4)
+                              N_C, L_T, L_F, S_T, S_F, R, N_R, N_F,
+                              activation='relu', positive_percentage=positive_percentage,
+                              num_ctc_labels=len(training_generator.char2num_dict.keys()))
         model.compile(optimizer=OPTIMIZER, loss=ctc_loss)
     else:
         model = Arik_CRNN(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
@@ -223,12 +222,23 @@ def train_basic(training_generator, dev_generator, early_stopping=False, ctc=Fal
               verbose=1,
               validation_data=dev_generator,
               use_multiprocessing=False,
-              callbacks = [callbacks])
-
+              callbacks=[callbacks])
     model.load_weights("best")
-    model.save_separate()
-    model.save_to_tflite()
-    return model
+    model.save_weights("for_inference.ckpt")
+
+    # Create new model such that expected batch size for detect
+    # layer is 1, to be used during inference.
+    inference_model = Arik_CRNN_CTC(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
+                                    N_C, L_T, L_F, S_T, S_F, R, N_R, N_F,
+                                    activation='relu', positive_percentage=positive_percentage,
+                                    num_ctc_labels=len(training_generator.char2num_dict.keys()))
+    inference_model.compile(optimizer=OPTIMIZER, loss=ctc_loss)
+    inference_model.build(input_shape=(1, INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES, 1))
+    inference_model.load_weights("for_inference.ckpt")
+    inference_model.save_separate()
+    inference_model.save_to_tflite()
+
+    return inference_model
 
 
 def parse_args():
@@ -238,7 +248,8 @@ def parse_args():
     :return: Arguments dict.
     '''
     parser = argparse.ArgumentParser(description='Trains CRNN, outputs model files.')
-    parser.add_argument('--data_dir', type=str, default='/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/spokestack-python/data_speech_isolated/silero', help='Directory where training data is stored.')
+    parser.add_argument('--data_dir', type=str, default='/data_enhanced_silero/',
+                        help='Directory where training data is stored.')
     parser.add_argument('--hyperparameter_search', type=bool, default=False)
     parser.add_argument('--early_stopping', type=bool, default=True)
     parser.add_argument('--use_augmented_train', type=bool, default=True)
