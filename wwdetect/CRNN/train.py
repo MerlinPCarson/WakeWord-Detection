@@ -1,19 +1,20 @@
+'''
+Module for training CRNN model on wakeword.
+'''
+
+import os
 import sys
-import glob
-import json
 import argparse
-from itertools import chain
 
+import tensorflow as tf
 from tensorflow.random import set_seed
-from tensorflow.keras import optimizers, metrics, losses
+from tensorflow.keras import optimizers, metrics, losses, backend
 from tensorflow.keras.callbacks import EarlyStopping, \
-                                       ReduceLROnPlateau, \
-                                       ModelCheckpoint
+    ReduceLROnPlateau, \
+    ModelCheckpoint
 from kerastuner.tuners import Hyperband
-from sklearn.metrics import balanced_accuracy_score
-import numpy as np
 
-from model import Arik_CRNN
+from model import Arik_CRNN, Arik_CRNN_CTC
 from dataloader import HeySnipsPreprocessed
 
 set_seed(42)
@@ -23,21 +24,24 @@ set_seed(42)
 #       with a 10ms stride (50% overlap). Given the overlap, 151 frames should
 #       still correspond to 1.5 seconds, so using the same dimensions as Arik
 #       et al.
+#
+#       TODO: 149 frames is actually 1.5 seconds, not 151. Could fix, not
+#             a huge deal.
 
 # Convolutional layer parameters:
-N_C = 32                # Number of filters in convolutional layer.
-L_T = 20                # Filter size (time dimension).
-L_F = 5                 # Filter size (frequency dimension).
-S_T = 8                 # Stride (time dimension).
-S_F = 2                 # Stride (frequency dimension).
+N_C = 32  # Number of filters in convolutional layer.
+L_T = 20  # Filter size (time dimension).
+L_F = 5  # Filter size (frequency dimension).
+S_T = 8  # Stride (time dimension).
+S_F = 2  # Stride (frequency dimension).
 
 # Recurrent layer(s) parameters:
-R = 2                   # Number of recurrent layers.
-N_R = 32                 # Number of hidden units.
-RNN_TYPE = "gru"        # Use GRU or LSTM for recurrent units.
+R = 2  # Number of recurrent layers.
+N_R = 32  # Number of hidden units.
+RNN_TYPE = "gru"  # Use GRU or LSTM for recurrent units.
 
 # Dense layer parameters:
-N_F = 64                # Number of hidden units.
+N_F = 64  # Number of hidden units.
 
 # Training hyperparameters:
 OPTIMIZER = optimizers.Adam()
@@ -49,48 +53,66 @@ DROPPED_LR = 0.0003
 INPUT_SHAPE_FEATURES = 40
 INPUT_SHAPE_FRAMES = 151
 
+# Metrics used for non-CTC model.
 METRICS = [
-      metrics.TruePositives(name='tp'),
-      metrics.FalsePositives(name='fp'),
-      metrics.TrueNegatives(name='tn'),
-      metrics.FalseNegatives(name='fn'),
-      "accuracy",
-      metrics.Precision(name='precision'),
-      metrics.Recall(name='recall')
+    metrics.TruePositives(name='tp'),
+    metrics.FalsePositives(name='fp'),
+    metrics.TrueNegatives(name='tn'),
+    metrics.FalseNegatives(name='fn'),
+    "accuracy",
+    metrics.Precision(name='precision'),
+    metrics.Recall(name='recall')
 ]
 
 
-def eval_basics(model, test_generator):
-    X, y = test_generator[0]
+def data_prep(data_path, ctc=False, use_enhanced=False):
+    '''
+    Prep data for training.
 
-    metrics = model.evaluate(X,y)
-    predictions = model.predict(X, verbose=0)
-    class_predictions = np.where(predictions < 0.5, 0, 1)
-    bal_acc = balanced_accuracy_score(y, class_predictions)
-
-    for label, value in zip(model.metrics_names, metrics):
-        print(f"{label}: {value}")
-    print(f"balanced accuracy: {bal_acc}")
-
-
-def data_prep(data_path):
-
-    dev_generator = HeySnipsPreprocessed([data_path + "dev.h5"], batch_size=BATCH_SIZE,
-                                              frame_num=INPUT_SHAPE_FRAMES, feature_num=INPUT_SHAPE_FEATURES)
-    test_generator = HeySnipsPreprocessed([data_path + "test.h5"], batch_size=0,
-                                              frame_num=INPUT_SHAPE_FRAMES, feature_num=INPUT_SHAPE_FEATURES)
-    training_generator = HeySnipsPreprocessed([data_path + "train.h5", data_path + "train_enhanced.h5"],
-                                              batch_size=BATCH_SIZE, frame_num=INPUT_SHAPE_FRAMES,
-                                                                     feature_num=INPUT_SHAPE_FEATURES)
-
-    return training_generator, dev_generator, test_generator
-
-
-def training_hypermodel(training_generator, dev_generator, early_stopping=False):
-    if early_stopping:
-      callbacks = EarlyStopping(monitor="val_loss", patience=6)
+    :param data_path: Path to preprocessed .h5 files containing data.
+    :param ctc: Using CTC loss or not.
+    :return: Training generator and development generator.
+    '''
+    dev_generator = HeySnipsPreprocessed([os.path.join(data_path, "dev.h5")],
+                                         batch_size=BATCH_SIZE,
+                                         frame_num=INPUT_SHAPE_FRAMES,
+                                         feature_num=INPUT_SHAPE_FEATURES,
+                                         ctc=ctc)
+    if use_enhanced:
+        train_paths = [os.path.join(data_path, "train.h5"),
+                       os.path.join(data_path, "train_enhanced.h5")]
     else:
-      callbacks = None
+        train_paths = [os.path.join(data_path, "train.h5")]
+
+    training_generator = HeySnipsPreprocessed(train_paths,
+                                              batch_size=BATCH_SIZE,
+                                              frame_num=INPUT_SHAPE_FRAMES,
+                                              feature_num=INPUT_SHAPE_FEATURES,
+                                              ctc=ctc)
+
+    return training_generator, dev_generator
+
+
+def train_hypermodel(training_generator, dev_generator, early_stopping=False):
+    '''
+    Use TF HyperModel to identify best hyperparameters for model,
+    then train using winning set of HP's. Currently only set up for
+    sigmoid/binary-crossentropy.
+
+    TODO: Set up to use CTC-loss based model.
+
+    :param training_generator: Generator which outputs preprocessed training dataset.
+    :param dev_generator: Generator which outputs preprocessed development dataset.
+    :param early_stopping: Use early stopping or not.
+    :return: Final trained model object.'''
+
+    callbacks = [ReduceLROnPlateau(monitor="val_loss", patience=3,
+                                   factor=0.03, min_lr=DROPPED_LR),
+                 ModelCheckpoint(filepath="best", save_best_only=True,
+                                 monitor="val_loss", mode="min")]
+
+    if early_stopping:
+        callbacks = [EarlyStopping(monitor="val_loss", patience=6)] + callbacks
 
     def build_model(hp):
         model = Arik_CRNN(input_features=INPUT_SHAPE_FEATURES,
@@ -100,21 +122,22 @@ def training_hypermodel(training_generator, dev_generator, early_stopping=False)
                           l_f=L_F,
                           s_t=S_T,
                           s_f=S_F,
-                          r=hp.Int("rnn_layers", 1, 4),
-                          n_r=hp.Int("rnn_units", 16, 64, step=8),
-                          n_f=hp.Int("dense_units", 16, 128, step=16),
-                          dropout=hp.Float("dense_dropout", 0.0, 0.5, step=0.1),
-                          activation=hp.Choice("activation", values=["relu"]))  # Perhaps try other activations?
+                          r=R,
+                          n_r=hp.Int("rnn_units", 16, 64, step=16),
+                          n_f=N_F,
+                          dropout=0.0,
+                          activation=hp.Choice("activation", values=["relu"]),
+                          rnn_type=hp.Choice("rnn_type", values=["gru", "lstm"]))
         model.compile(optimizer=OPTIMIZER,
-                      loss=losses.BinaryCrossentropy(),
-                      metrics=METRICS)
+                      loss=losses.CategoricalCrossentropy(),
+                      metrics=["acc"])
         model.build(input_shape=(BATCH_SIZE, INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES, 1))
         return model
 
     tuner = Hyperband(
         build_model,
         max_epochs=10,
-        factor=3,
+        factor=2,
         objective="val_loss",
         directory='CRNN_tuning',
         project_name='hyperparam_search')
@@ -137,22 +160,61 @@ def training_hypermodel(training_generator, dev_generator, early_stopping=False)
     model.save()
     model.save_to_tflite()
 
-def training_basic(training_generator, dev_generator, early_stopping=False):
-    print(len(training_generator))
-    print(len(dev_generator))
-    if early_stopping:
-      callbacks = [EarlyStopping(monitor="val_loss", patience=6),
-                   ReduceLROnPlateau(monitor="val_loss", patience=3,
-                                     factor=0.03, min_lr=DROPPED_LR),
-                   ModelCheckpoint(filepath="best", save_best_only=True,
-                                   monitor="val_loss", mode="min")]
-    else:
-      callbacks = None
 
-    model = Arik_CRNN(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
-                      N_C, L_T, L_F, S_T, S_F, R, N_R, N_F,
-                      activation='relu')
-    model.compile(optimizer=OPTIMIZER, loss=losses.BinaryCrossentropy(), metrics=METRICS)
+def train_basic(training_generator, dev_generator, early_stopping=False, ctc=False,
+                positive_percentage=1.0):
+    '''
+    Train a CRNN model without hyperparameter search. Uses HP
+    settings from global variables at top of file. Outputs .h5 and
+    .tflite model files.
+
+    :param training_generator: Generator which outputs preprocessed training dataset.
+    :param dev_generator: Generator which outputs preprocessed development dataset.
+    :param early_stopping: Use early stopping or not.
+    :param ctc: Use CTC-based model training or not.
+    :return: Trained model object.
+    '''
+
+    callbacks = [ReduceLROnPlateau(monitor="val_loss", patience=3,
+                                   factor=0.03, min_lr=DROPPED_LR),
+                 ModelCheckpoint(filepath="best", save_best_only=True,
+                                 monitor="val_loss", mode="min",
+                                 save_weights_only=True)]
+
+    if early_stopping:
+        callbacks = [EarlyStopping(monitor="val_loss", patience=6)] + callbacks
+
+    # If using CTC loss.
+    if ctc:
+        def ctc_loss(y_true, y_pred):
+            # Tensor of shape (batch_size), where values
+            # correspond to the length of the label sequence.
+            # This will make sure that input label sequences
+            # we padded with zeros are only counted as the
+            # length of their ACTUAL labels.
+            label_length = tf.math.count_nonzero(y_true + 1, axis=-1, keepdims=True)
+
+            # Tensor shape (batch_size), where values
+            # correspond to length of input sequence.
+            # This is always the same in our case.
+            input_length = tf.fill((BATCH_SIZE, 1), 19)
+
+            # Blank index is assumed to be zero.
+            return tf.keras.backend.ctc_batch_cost(y_true=y_true, y_pred=y_pred,
+                                                   input_length=input_length,
+                                                   label_length=label_length)
+
+        model = Arik_CRNN_CTC(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
+                              N_C, L_T, L_F, S_T, S_F, R, N_R, N_F,
+                              activation='relu', positive_percentage=positive_percentage,
+                              num_ctc_labels=len(training_generator.char2num_dict.keys()))
+        model.compile(optimizer=OPTIMIZER, loss=ctc_loss)
+    else:
+        model = Arik_CRNN(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
+                          N_C, L_T, L_F, S_T, S_F, R, N_R, N_F,
+                          activation='relu', positive_percentage=positive_percentage)
+        model.compile(optimizer=OPTIMIZER, loss=losses.CategoricalCrossentropy(), metrics="accuracy")
+
     model.build(input_shape=(BATCH_SIZE, INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES, 1))
 
     model.fit(x=training_generator,
@@ -160,23 +222,56 @@ def training_basic(training_generator, dev_generator, early_stopping=False):
               verbose=1,
               validation_data=dev_generator,
               use_multiprocessing=False,
-              callbacks = [callbacks])
-
+              callbacks=[callbacks])
     model.load_weights("best")
-    model.save()
-    model.save_to_tflite()
-    return model
+    model.save_weights("for_inference.ckpt")
+
+    # Create new model such that expected batch size for detect
+    # layer is 1, to be used during inference.
+    inference_model = Arik_CRNN_CTC(INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES,
+                                    N_C, L_T, L_F, S_T, S_F, R, N_R, N_F,
+                                    activation='relu', positive_percentage=positive_percentage,
+                                    num_ctc_labels=len(training_generator.char2num_dict.keys()))
+    inference_model.compile(optimizer=OPTIMIZER, loss=ctc_loss)
+    inference_model.build(input_shape=(1, INPUT_SHAPE_FEATURES, INPUT_SHAPE_FRAMES, 1))
+    inference_model.load_weights("for_inference.ckpt")
+    inference_model.save_separate()
+    inference_model.save_to_tflite()
+
+    return inference_model
+
 
 def parse_args():
+    '''
+    Parse commandline arguments.
+
+    :return: Arguments dict.
+    '''
     parser = argparse.ArgumentParser(description='Trains CRNN, outputs model files.')
-    parser.add_argument('--data_dir', type=str, default='/data_enhanced/', help='Directory where training data is stored.')
+    parser.add_argument('--data_dir', type=str, default='/data_enhanced_silero/',
+                        help='Directory where training data is stored.')
+    parser.add_argument('--hyperparameter_search', type=bool, default=False)
+    parser.add_argument('--early_stopping', type=bool, default=True)
+    parser.add_argument('--use_augmented_train', type=bool, default=True)
+    parser.add_argument('--ctc', type=bool, default=True)
     args = parser.parse_args()
     return args
 
+
 def main(args):
-    train, dev, test = data_prep(args.data_dir)
-    model = training_basic(train, dev, early_stopping=True)
-    eval_basics(model, test)
+    '''
+    Main training function.
+
+    :param args: Arguments dict.
+    :return: 0
+    '''
+    train, dev = data_prep(args.data_dir, args.ctc, use_enhanced=args.use_augmented_train)
+    if args.hyperparameter_search:
+        model = train_hypermodel(train, dev, early_stopping=True)
+    else:
+        model = train_basic(train, dev, early_stopping=args.early_stopping, ctc=args.ctc)
+    return 0
+
 
 if __name__ == '__main__':
     args = parse_args()
