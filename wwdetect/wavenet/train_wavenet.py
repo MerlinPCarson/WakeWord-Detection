@@ -17,13 +17,14 @@ from wavenet_loader import HeySnipsDataset
 def load_datasets(args):
 
     # create dataloaders
-    trainset = HeySnipsDataset(os.path.join(args.dataset_dir, args.trainset), shuffle=True, 
+    trainset = HeySnipsDataset([os.path.join(args.dataset_dir, args.trainset), 
+                                os.path.join(args.dataset_dir, args.trainset2)], 
                                batch_size=args.batch_size, num_features=args.num_features, 
-                               workers=2)
+                               timesteps=args.timesteps, shuffle=True, workers=2)
 
-    valset = HeySnipsDataset(os.path.join(args.dataset_dir, args.valset), shuffle=False, 
+    valset = HeySnipsDataset([os.path.join(args.dataset_dir, args.valset)], shuffle=False, 
                              batch_size=args.batch_size, num_features=args.num_features, 
-                             workers=2)
+                             timesteps=args.timesteps, workers=2)
 
     return trainset, valset
 
@@ -61,6 +62,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Wavenet trainer for wakeword detection.')
     parser.add_argument('--dataset_dir', type=str, default='data', help='directory with datasets as H5 files')
     parser.add_argument('--trainset', type=str, default='train.h5', help='H5 file containing training vectors')
+    parser.add_argument('--trainset2', type=str, default='train_enhanced.h5', help='H5 file containing training vectors')
     parser.add_argument('--valset', type=str, default='dev.h5', help='H5 file containing validation vectors')
     parser.add_argument('--testset', type=str, default='test.h5', help='H5 file containing test vectors')
     parser.add_argument('--model', type=str, default='models/wavenet', help='Directory to save trained models to')

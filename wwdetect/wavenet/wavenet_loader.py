@@ -5,14 +5,15 @@ import tensorflow as tf
 
 
 class HeySnipsDataset(tf.keras.utils.Sequence):
-    def __init__(self, data_file, batch_size=32, num_features=40, 
-                 shuffle=False, *args, **kwargs):
+    def __init__(self, data_files, batch_size=32, num_features=40, 
+                 timesteps=182, shuffle=False, *args, **kwargs):
 
         # dataset pre-fetch
-        self.dataset, self.num_wakewords = self.preload_data(data_file)
+        self.dataset, self.num_wakewords = self.preload_data(data_files)
 
         # state variables
         self.num_features = num_features
+        self.timesteps = timesteps
         self.batch_size = batch_size
         self.num_batches = len(self.dataset) // batch_size
         self.shuffle = shuffle
@@ -30,10 +31,11 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
 
         # load batch features and labels 
         X = [self.dataset[i]['features'] for i in batch_idxs]
-        y = np.array([self.dataset[i]['label'] for i in batch_idxs])
 
         # make each batch uniform length
         X = self.pad_features(X)
+
+        y = np.array([self.dataset[i]['label'] for i in batch_idxs])
 
         return X, y
 
@@ -91,37 +93,49 @@ class HeySnipsDataset(tf.keras.utils.Sequence):
     def pad_features(self, X):
 
         # create new datastruct of max length timesteps 
-        max_length = max([x.shape[0] for x in X])
+        if self.timesteps == None:
+            max_length = max([x.shape[0] for x in X])
+        else:
+            max_length = self.timesteps
+
         X_padded = np.zeros((len(X), max_length, X[0].shape[-1]), dtype=np.float32)
 
         # pad features
         for idx, features in enumerate(X):
             features = np.expand_dims(features, 0)
+           
+            # only grab static length of each sample
+            if self.timesteps is not None:
+                features = features[:,:self.timesteps,:]
+
             X_padded[idx, :features.shape[1], :features.shape[2]] = features 
         return X_padded 
 
-    def preload_data(self, data_file):
+    def preload_data(self, data_files):
 
         self.dataset = []
         self.num_wakewords = 0
-        print(f'pre-loading dataset from file {data_file}')
-        with h5py.File(data_file, 'r') as h5:
-            keys = list(h5.keys())
-            for key in tqdm(keys):
-                self.dataset.append({'file_name': key, 
-                                     'label': np.uint8(h5[key].attrs['is_hotword']),
-                                     'start_speech': np.int16(h5[key].attrs['speech_start_ts']),
-                                     'end_speech': np.int16(h5[key].attrs['speech_end_ts']),
-                                     'features': np.array(h5[key][()], dtype=np.float32)})
-
-                # count number of wakewords in dataset
-                if h5[key].attrs['is_hotword'] == 1:
-                    self.num_wakewords += 1
+        for data_file in data_files:
+            print(f'pre-loading dataset from file {data_file}')
+            with h5py.File(data_file, 'r') as h5:
+                keys = list(h5.keys())
+                for key in tqdm(keys):
+                    self.dataset.append({'file_name': key, 
+                                         'label': np.uint8(h5[key].attrs['is_hotword']),
+                                         'start_speech': np.int16(h5[key].attrs['speech_start_ts']),
+                                         'end_speech': np.int16(h5[key].attrs['speech_end_ts']),
+                                         'features': np.array(h5[key][()], dtype=np.float32)})
+    
+                    # count number of wakewords in dataset
+                    if h5[key].attrs['is_hotword'] == 1:
+                        self.num_wakewords += 1
 
         return self.dataset, self.num_wakewords
 
 if __name__ == '__main__':
     # Test Loader
-    data_file = 'data/test.h5'
-    dataloader = HeySnipsDataset(data_file)
-
+    data_file = 'data/dev.h5'
+    dataloader = HeySnipsDataset([data_file], timesteps=182)
+    print(dataloader[0][0][0][181])
+    dataloader = HeySnipsDataset([data_file], timesteps=None)
+    print(dataloader[0][0][0][181])

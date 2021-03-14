@@ -22,8 +22,10 @@ from pathlib import Path
 from typing import Any
 from itertools import groupby
 from matplotlib import pyplot as plt
+from pyannote.audio.utils.signal import Binarize
 
 import webrtcvad
+import torch
 
 # Class to perform preprocessing on hey-snips
 # audio files.
@@ -34,19 +36,37 @@ class Dataset_Preprocessor:
         self.sr = kwargs['sample_rate']
         self.out_dir = kwargs['out_dir']
         self.data_dir = kwargs['data_dir']
-        self.train_meta = json.load(open(self.data_dir + "/train.json", 'r'))
-        self.dev_meta = json.load(open(self.data_dir + "/dev.json", 'r'))
-        self.test_meta = json.load(open(self.data_dir + "/test.json", 'r'))
+        self.train_meta = json.load(open(os.path.join(self.data_dir, "train.json"), 'r'))
+        self.dev_meta = json.load(open(os.path.join(self.data_dir, "dev.json"), 'r'))
+        self.test_meta = json.load(open(os.path.join(self.data_dir, "test.json"), 'r'))
+        self.debug = kwargs['examine_audio']
 
-        if not Path(self.out_dir + "/audio_files/").exists():
-            os.makedirs(self.out_dir + "/audio_files/")
-        self.vad = webrtcvad.Vad(2)
+        if not Path(os.path.join(self.out_dir, "audio_files")).exists():
+            os.makedirs(os.path.join(self.out_dir, "audio_files"))
+
+        self.vad_type = kwargs['vad_type']
+        if self.vad_type == 'webrtc':
+            self.vad = webrtcvad.Vad(2)
+        elif self.vad_type == 'pyannotate':
+            self.vad = torch.hub.load('pyannote/pyannote-audio', 'sad_ami')
+        elif self.vad_type == 'silero':
+            self.vad, self.utils = torch.hub.load('snakers4/silero-vad', 'silero_vad')
+        else:
+            raise NotImplementedError
+
+    def isolate_speech(self):
+        if self.vad_type == 'webrtc':
+            self.__isolate_speech_webrtc()
+        elif self.vad_type == 'pyannote':
+            self.__isolate_speech_pyannote()
+        else:
+            self.__isolate_speech_silero()
 
     # ----------------------------------------------------------- *
-    # Use VAD to isolate speech in dataset, save out portion
+    # Use WEBRTCVAD to isolate speech in dataset, save out portion
     # of audio files which contain speech to self.out_dir. Updated
     # metadata .json files saved out as well, to same directory.
-    def isolate_speech(self):
+    def __isolate_speech_webrtc(self):
         vad_frame_ms = 10
         vad_frame = self.sr * vad_frame_ms // 1000
         splits = [("train", self.train_meta),
@@ -57,7 +77,8 @@ class Dataset_Preprocessor:
         for split, meta in splits:
             discarded = 0
             check_index = 0
-            for file in tqdm(meta):
+            new_meta = []
+            for i, file in enumerate(tqdm(meta, leave=True)):
                 check_index += 1
                 new_path = os.path.join(self.out_dir, file['audio_file_path'])
 
@@ -87,10 +108,11 @@ class Dataset_Preprocessor:
                             new_frames_speech.extend(chunk)
                     assert len(new_frames_speech) == len(frames_speech)
 
-                    # Periodically inspect output.
-                    if check_index % 2000 == 0:
-                        self.examine_audio(file['audio_file_path'], samples, new_frames_speech, frame_timepoints,
-                                       play_sound=False, plot=True)
+                    if self.debug:
+                        # Periodically inspect output.
+                        if check_index % 2000 == 0:
+                            self.examine_audio(file['audio_file_path'], samples, new_frames_speech, frame_timepoints,
+                                        play_sound=False, plot=True)
 
                 # Use results of VAD to chop out initial and final silence, leaving one
                 # frame buffer on either side.
@@ -102,18 +124,131 @@ class Dataset_Preprocessor:
 
                     # Update duration in metadata.
                     file['duration'] = len(speech_samples) / self.sr
+
+                    new_meta.append(file)
                 # Discard files for which no speech was found.
                 except Exception as e:
-                    self.examine_audio(file['audio_file_path'], samples, new_frames_speech, frame_timepoints,
-                                       play_sound=False, plot=True)
+                    if self.debug:
+                        self.examine_audio(file['audio_file_path'], samples, new_frames_speech, frame_timepoints,
+                                        play_sound=False, plot=True)
                     discarded += 1
                     print("discarding ", file['audio_file_path'])
-                    meta.remove(file)
             print("discarded", discarded)
 
             # Write out updated metadata.
-            with open(self.out_dir + split + ".json", 'w') as outfile:
-                json.dump(meta, outfile)
+            with open(os.path.join(self.out_dir, split + ".json"), 'w') as outfile:
+                json.dump(new_meta, outfile, indent=4)
+
+
+    # ----------------------------------------------------------- *
+    # As above, using pyannote. Works well, but cannot use in
+    # streaming pipeline.
+    def __isolate_speech_pyannote(self):
+        splits = [("train", self.train_meta),
+                  ("dev", self.dev_meta),
+                  ("test", self.test_meta)]
+        # Higher onset/offset --> stricter
+        binarize = Binarize(offset=0.8, onset=0.8, log_scale=True,
+                            min_duration_off=0.25, min_duration_on=0.35)
+
+        # Run through all audio files.
+        for split, meta in splits:
+            new_meta = []
+            check_index = 0
+            kept = 0
+            for file in tqdm(meta):
+                check_index += 1
+                original_path = os.path.join(self.data_dir, file['audio_file_path'])
+                new_path = os.path.join(self.out_dir, file['audio_file_path'])
+                vad_scores = self.vad({'audio': original_path})
+                vad_segments = binarize.apply(vad_scores, dimension=1)
+
+                # Must be at least one segment of speech detected.
+                if len(vad_segments) > 0:
+                    kept += 1
+                    start_point_sample = int(vad_segments[0].start * self.sr)
+                    end_point_sample = int(vad_segments[-1].end * self.sr)
+                    samples, _ = librosa.load(original_path, sr=self.sr)
+
+                    if self.debug:
+                        if check_index % 2000 == 0:
+                            plt.plot(samples)
+                            plt.vlines(start_point_sample, ymin=-1, ymax=1)
+                            plt.vlines(end_point_sample, ymin=-1, ymax=1)
+                            plt.show()
+                            plt.close()
+
+                    speech_samples = samples[start_point_sample:end_point_sample]
+                    sf.write(new_path, speech_samples, self.sr)
+                    new_file = {key: value for key, value in file.items()}
+                    new_file['duration'] = len(speech_samples) / self.sr
+                    new_meta.append(new_file)
+
+            print("discarded", check_index - kept)
+
+            # Write out updated metadata.
+            with open(os.path.join(self.out_dir, split + ".json"), 'w') as outfile:
+                json.dump(new_meta, outfile, indent=4)
+
+
+    # ----------------------------------------------------------- *
+    # As above, using silero-vad. A bit inferior to pyannote, but
+    # can be used for streaming.
+    def __isolate_speech_silero(self):
+        splits = [("train", self.train_meta),
+                  ("dev", self.dev_meta),
+                  ("test", self.test_meta)]
+        new_meta = {}
+        (get_speech_ts,
+         save_audio, read_audio,
+         _, _, _) = self.utils
+
+        # Run through all audio files.
+        for split, meta in splits:
+            new_meta = []
+            check_index = 0
+            kept = 0
+            for file in tqdm(meta):
+                check_index += 1
+                original_path = os.path.join(self.data_dir, file['audio_file_path'])
+                new_path = os.path.join(self.out_dir, file['audio_file_path'])
+                samples = read_audio(original_path)
+
+                if len(samples) > 0:
+                    vad_segments = get_speech_ts(samples, self.vad,
+                                                 trig_sum = 0.7,
+                                                 neg_trig_sum = 0.4,
+                                                 num_steps=8,
+                                                 num_samples_per_window=3000,
+                                                 visualize_probs=False) # If this is turned on,
+                                                                        # must follow with plt.show()
+
+                    # Must be at least one segment of speech detected.
+                    if len(vad_segments) > 0:
+                        kept += 1
+                        start_point_sample = vad_segments[0]["start"]
+                        end_point_sample = vad_segments[-1]["end"]
+
+                        if self.debug:
+                            if check_index % 2000 == 0:
+                                plt.plot(samples)
+                                plt.vlines(start_point_sample, ymin=-1, ymax=1)
+                                plt.vlines(end_point_sample, ymin=-1, ymax=1)
+                                plt.show()
+                                plt.close()
+
+                        speech_samples = samples[start_point_sample:end_point_sample]
+                        save_audio(new_path, speech_samples, self.sr)
+                        new_file = {key: value for key, value in file.items()}
+                        new_file['duration'] = speech_samples.shape[1] / self.sr
+                        new_meta.append(new_file)
+
+            print("discarded", check_index - kept)
+
+            # Write out updated metadata.
+            with open(os.path.join(self.out_dir, split + ".json"), 'w') as outfile:
+                json.dump(new_meta, outfile, indent=4)
+
 
     # ----------------------------------------------------------- *
     # Take a look at which frames of an audio file have been
@@ -154,7 +289,7 @@ class Dataset_Preprocessor:
     # if different from original path designated when creating class.
     def enhance_train_set(self, original_path=None):
         np.random.seed(42)
-        enhanced_out_path = self.out_dir + "enhanced_train_negative/"
+        enhanced_out_path = os.path.join(self.out_dir, "enhanced_train_negative")
         enhanced_meta = []
         if not Path(enhanced_out_path).exists():
             os.makedirs(enhanced_out_path)
@@ -163,9 +298,9 @@ class Dataset_Preprocessor:
             original_path=self.data_dir
 
         negative_files = [file['audio_file_path'] for file in self.train_meta if not file['is_hotword'] and
-                                                            Path(original_path + file['audio_file_path']).exists()]
-        for file in tqdm(self.train_meta):
-            if file['is_hotword'] and Path(original_path + file['audio_file_path']).exists():
+                                                            Path(os.path.join(original_path, file['audio_file_path'])).exists()]
+        for file in tqdm(self.train_meta, leave=True):
+            if file['is_hotword'] and Path(os.path.join(original_path, file['audio_file_path'])).exists():
                 #offset = np.random.randint(0,2) # 0: onset, 1: offset
                 offset = 1 # For now, just replace offsets.
                 percentage = np.random.uniform(0.45,0.6) # How much to remove/replace.
@@ -205,23 +340,23 @@ class Dataset_Preprocessor:
                 else:
                     pos_samples_reduced = pos_samples[num_samples_to_remove:]
                     new_neg_samples = np.append(neg_samples[:num_samples_to_remove],pos_samples_reduced)
-                sf.write(self.out_dir + "enhanced_train_negative/" + save_path, new_neg_samples, self.sr)
+                sf.write(os.path.join(self.out_dir, "enhanced_train_negative", save_path), new_neg_samples, self.sr)
 
                 # Add metadata to be written out as json file.
                 enhanced_meta.append({'duration': len(new_neg_samples) / self.sr,
                                       'worker_id': 'n_a',
-                                      'audio_file_path': "enhanced_train_negative/" + save_path,
+                                      'audio_file_path': os.path.join("enhanced_train_negative", save_path),
                                       'id': Path(save_path).stem,
                                       'is_hotword': 0})
         # Write out metadata.
-        with open(self.out_dir + "train_enhanced" + ".json", 'w') as outfile:
-            json.dump(enhanced_meta, outfile)
+        with open(os.path.join(self.out_dir, "train_enhanced.json"), 'w') as outfile:
+            json.dump(enhanced_meta, outfile, indent=4)
 
 
     def reload_metadata(self, dir):
-        self.train_meta = json.load(open(dir + "train.json", 'r'))
-        self.dev_meta = json.load(open(dir + "dev.json", 'r'))
-        self.test_meta = json.load(open(dir + "test.json", 'r'))
+        self.train_meta = json.load(open(os.path.join(dir, "train.json"), 'r'))
+        self.dev_meta = json.load(open(os.path.join(dir, "dev.json"), 'r'))
+        self.test_meta = json.load(open(os.path.join(dir, "test.json"), 'r'))
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Preprocesses audio data by isolating speech and '
@@ -229,8 +364,12 @@ def parse_args():
     parser.add_argument('--data_dir', type=str, default='data/hey_snips_research_6k_en_train_eval_clean_ter',
                         help='Directory with Hey Snips raw dataset')
     parser.add_argument('--out_dir', type=str, default='data_speech_isolated/', help='Directory to save datasets to')
+    parser.add_argument('--examine_audio', default=False, action='store_true', help='Flag to examine problematic audio clips')
     parser.add_argument('--sample_rate', type=int, default=16000, help='Sample rate for audio (Hz)')
+    parser.add_argument('--vad_type', type=str, default='silero', choices=['webrtc', 'pyannotate', 'silero'], help='Type of VAD used to extract speech')
     args = parser.parse_args()
+
+    args.out_dir = os.path.join(args.out_dir, args.vad_type)
 
     return args
 

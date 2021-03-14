@@ -93,7 +93,7 @@ def main(args):
     start = time.time()
 
     # create dataloader
-    testset = HeySnipsDataset(os.path.join(args.dataset_dir, args.testset), 
+    testset = HeySnipsDataset([os.path.join(args.dataset_dir, args.testset)], 
                               num_features=args.num_features, workers=2,
                               shuffle=False)
 
