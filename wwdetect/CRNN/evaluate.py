@@ -17,6 +17,7 @@ from dataloader import HeySnipsPreprocessed
 
 from tensorflow_tflite import TFLiteModel
 
+# Metrics to calculate for each model.
 METRICS = [
       metrics.TruePositives(name='tp'),
       metrics.FalsePositives(name='fp'),
@@ -28,6 +29,15 @@ METRICS = [
 
 
 def prep_test_data(data_path, input_frames, input_features, ctc):
+    '''
+    Small function to load test data.
+
+    :param data_path: Path to .h5 file containing data.
+    :param input_frames: Number of input frames model expects.
+    :param input_features: Number of input features model expects.
+    :param ctc: Boolean, if model CTC-based.
+    :return: Loaded test generator.
+    '''
     test_generator = HeySnipsPreprocessed([os.path.join(data_path, "test.h5")],
                                            batch_size=0,
                                            frame_num=input_frames,
@@ -37,6 +47,16 @@ def prep_test_data(data_path, input_frames, input_features, ctc):
 
 
 def eval_basics(encoder, decoder, test_generator):
+    '''
+    Evaluation for model trained with cross-entropy loss
+    (two output nodes, first is not wakeword, second is
+    wakeword).
+
+    :param encoder: Preloaded encoder model.
+    :param decoder: Preloaded decoder model.
+    :param test_generator: Generator for test data.
+    :return: Dict with all statistics.
+    '''
     X, y = test_generator[0]
     keys = test_generator.list_IDs_temp
     FAs = []
@@ -78,19 +98,34 @@ def eval_basics(encoder, decoder, test_generator):
     return stats
 
 def eval_CTC(encoder, decoder, test_generator):
+    '''
+    Evaluation for model trained with CTC loss.
+
+    :param encoder: Preloaded encoder tflite model.
+    :param decoder: Preloaded decoder tflite model.
+    :param test_generator: Generator containing test data.
+    :return: None.
+    '''
     X, y = test_generator[0]
     X = X.astype(np.float32)
     y_seq = [tf.strings.reduce_join(test_generator.num2char(y_i)).numpy().decode("utf-8") for y_i in y]
     y_pred = []
     index = 0
+
+    # Iterate through all test samples and decode output of model.
     for sample in tqdm(X):
         sample = np.expand_dims(sample, axis=0)
         y_encode_sample = encoder(sample)[0]
         y_decode_sample = decoder(y_encode_sample)[0]
         input_len = np.ones(y_decode_sample.shape[0]) * y_decode_sample.shape[1]
+
+        # Final index must change based on how long the max target sequence length is.
+        # Current setup is two, sequences are '[HEY][SNIPS]' and '[OTHER]'.
         result = tf.keras.backend.ctc_decode(y_decode_sample, input_length=input_len, greedy=True)[0][0][:, :2]
         result_labels = "".join(test_generator.num2char(result[0].numpy()))
-        if "plot_posteriors" and y_seq[index] == "[HEY][SNIPS]":
+
+        # Toggle to plot posterior trajectories.
+        if not "plot_posteriors" and y_seq[index] == "[HEY][SNIPS]":
             labels = list(test_generator.char2num_dict.keys())[1:] + ['[BLANK]']
             target = "".join([test_generator.num2char_dict[num] for num in y[index] if num >= 0])
             plt.imshow(np.squeeze(y_decode_sample).T, cmap='Greys')
@@ -102,8 +137,11 @@ def eval_CTC(encoder, decoder, test_generator):
         y_pred += [result_labels]
         index += 1
 
+    # Convert sequences to classes.
     y_pred_class = [1 if y_pred_i == "[HEY][SNIPS]" else 0 for y_pred_i in y_pred]
     y_true_class = [1 if y_i == "[HEY][SNIPS]" else 0 for y_i in y_seq]
+
+    # Calculate and output metrics.
     bal_acc = balanced_accuracy_score(y_true_class, y_pred_class)
 
     for metric in METRICS:
@@ -124,6 +162,13 @@ def parse_args():
     return args
 
 def load_model(encode_path, detect_path):
+    '''
+    Helper function to load tflite model.
+
+    :param encode_path: Path to encoder model.
+    :param detect_path: Path to detect model.
+    :return: Loaded models.
+    '''
     encode_model: TFLiteModel = TFLiteModel(
         model_path=encode_path
     )

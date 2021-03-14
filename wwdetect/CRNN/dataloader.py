@@ -38,6 +38,7 @@ class HeySnipsPreprocessed(Sequence):
         self.batch_size = batch_size
 
         if ctc:
+            # Modify this based on desired label configuration.
             # self.char2num_dict = {'[BLANK]': -1,
             #                       '[SILENCE]': 0,
             #                       '[OTHER]': 1,
@@ -92,6 +93,7 @@ class HeySnipsPreprocessed(Sequence):
             X[i,] = np.expand_dims(X_i, -1)
 
             # Store class.
+            # For CTC, modify this according to target sequences.
             if self.ctc:
                 # If this is a wakeword.
                 if self.dataset[ID]['label'] == 1:
