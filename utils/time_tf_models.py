@@ -102,8 +102,15 @@ def time_models(args):
     # run timings on Tensorflow Lite models
     print(f'Running timings on Tensorflow-Lite {args.model_type} models')
     avg_time_tf_lite = time_tf_lite_models(tf_lite_encode, tf_lite_detect, args.num_runs)
-
     print(f'TF-Lite average time: {avg_time_tf_lite} secs')
+
+    # run timings on quantiezed Tensorflow Lite models
+    if args.time_quantized:
+        tf_lite_encode = tflite.Interpreter(model_path=os.path.join(args.tf_lite_model_dir, 'encode-quant.tflite'))
+        tf_lite_detect = tflite.Interpreter(model_path=os.path.join(args.tf_lite_model_dir, 'detect-quant.tflite'))
+        print(f'Running timings on quantized Tensorflow-Lite {args.model_type} models')
+        avg_time_tf_lite = time_tf_lite_models(tf_lite_encode, tf_lite_detect, args.num_runs)
+        print(f'TF-Lite average time: {avg_time_tf_lite} secs')
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Gets inference timings for Tensorflow and TF-Lite versions of Wavenet models.')
@@ -113,6 +120,7 @@ def parse_args():
     parser.add_argument('--num_features', type=float, default=40, help='Number of features per-timestep')
     parser.add_argument('--timesteps', type=int, default=182, help='Number of timesteps per example, None for variable length')
     parser.add_argument('--num_runs', type=int, default=10, help='Number of runs to get average infernce time')
+    parser.add_argument('--time_quantized', action='store_true', help='Time quantized version of TF-Lite models')
     return parser.parse_args()
 
 def main(args):
