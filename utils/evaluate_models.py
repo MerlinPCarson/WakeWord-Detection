@@ -93,7 +93,7 @@ def get_posterior(models_dir, model_type, eval_type,
                     x = np.expand_dims(np.array(frames).T, 0)
                     x = np.expand_dims(x, -1)
                     x = np.array(encode_model(x)).squeeze(0)
-                    x = detect_model(x)[0][0][0]
+                    x = detect_model(x)[0][0][1]
 
                 # inference for Wavenet model
                 elif model_type == 'Wavenet':
@@ -102,6 +102,7 @@ def get_posterior(models_dir, model_type, eval_type,
                     x = detect_model(x)[0][0][1]
 
                 all_posterior_file.append(x)
+
 
         # TODO: Currently grabbing maximum
         # posterior output over all windows
@@ -112,27 +113,32 @@ def get_posterior(models_dir, model_type, eval_type,
         # an accept.
         if eval_type == "false_negatives":
             all_posterior.append(np.max(all_posterior_file))
-            if examine_audio:
-                if all_posterior[-1] < 0.75:
+            if examine_audio and all_posterior[-1] < 0.75:
                     plot_wav_and_posterior(samples, all_posterior_file,
-                                        sample_rate, Path(file).stem)
+                                           sample_rate, Path(file).stem,
+                                           frame_width, encoder_len,
+                                           alignment="mid")
         else:
             all_posterior.extend(all_posterior_file)
 
     return all_posterior
 
 
-# TODO: Could the posterior trajectory be better aligned with
-# the waveform? The first window really corresponds to the
-# first 1.5 second block, then sliding 20 ms windows.
-def plot_wav_and_posterior(wav, posteriors, sample_rate, filename):
-    fig, ax = plt.subplots(2, 1, figsize=(10, 5))
+def plot_wav_and_posterior(wav, posteriors, sample_rate,
+                           filename, frame_width, encoder_len, alignment):
+    first_frame_endpoint_sec = ((encoder_len + 1) * 10) / 1000
+    sliding_window_sec = frame_width / 1000
+    if alignment == 'mid':
+        start_point = first_frame_endpoint_sec / 2
+        posterior_x = [start_point+(frame_num*sliding_window_sec) for frame_num in range(len(posteriors))]
+    elif alignment == 'end':
+        posterior_x = [first_frame_endpoint_sec+(frame_num*sliding_window_sec) for frame_num in range(len(posteriors))]
+    fig, ax = plt.subplots(2, 1, figsize=(10, 5), sharex=True)
     ax[0].set_title("Posterior Trajectory for\n " + str(filename), size=18,
                     fontweight="bold")
-    ax[0].plot(posteriors)
+    ax[0].plot(posterior_x, posteriors)
     ax[0].set_facecolor(color='lightgrey')
     ax[0].grid(color='white')
-    ax[0].set_xlabel("Window", size=12)
     ax[0].set_ylabel("Posterior\nProbability", size=12)
     x = [samp_num / sample_rate for samp_num in range(len(wav))]
     ax[1].plot(x, wav)
@@ -162,14 +168,14 @@ def concatenate_FA(wavs, num_files, FAR_path):
 
     # Just take a subset of files.
     print('Concatenating negative samples')
-    for wav in tqdm(wavs[1:len(num_files)]):
+    for wav in tqdm(wavs[1:num_files]):
         wavs_concat += AudioSegment.silent(duration=3000) + wav
 
     wavs_concat.export(FAR_path, format="wav")
 
 
 def load_posteriors(models_dir, model_type, frame_width,
-                    sample_rate, eval_type, input_path, 
+                    sample_rate, eval_type, input_path,
                     out_path, examine_audio=False):
     if out_path.exists():
         with open(out_path, 'rb') as f:
@@ -265,14 +271,19 @@ def plot_FRR_FAR(keyword_posteriors, no_keyword_posteriors, num_wakewords, total
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Evaluates wakeword model(s), reports useful metrics.')
-    parser.add_argument('--model_type', type=str, default='CRNN', choices=['CRNN', 'Wavenet'], help='Model type being evaluated.')
-    parser.add_argument('--models_dir', type=str, default='utils/CRNN_files', help='Directory where trained models are stored.')
+    parser.add_argument('--model_type', type=str, default='CRNN', choices=['CRNN', 'Wavenet'],
+                        help='Model type being evaluated.')
+    parser.add_argument('--models_dir', type=str,
+                        default='/Users/amie/Desktop/OHSU/CS606 - Deep Learning II/FinalProject/WakeWord-Detection/wwdetect/CRNN/models/Arik_CRNN_data_original/',
+                        help='Directory where trained models are stored.')
     parser.add_argument('--data_dir', type=str, default='data/hey_snips_research_6k_en_train_eval_clean_ter/',
                         help='Directory with Hey Snips raw dataset')
-    parser.add_argument('--eval_dir', type=str, default='data/evaluation',
+    parser.add_argument('--eval_dir', type=str, default='data/evaluation/',
                         help='Directory to save and load concatenated wav files from')
-    parser.add_argument('--pos_samples', type=str, default='hey_snips_long.wav', help='File for concatenated positive class samples')
-    parser.add_argument('--neg_samples', type=str, default='not_hey_snips_long.wav', help='File for concatenated negative class samples')
+    parser.add_argument('--pos_samples', type=str, default='hey_snips_long.wav',
+                        help='File for concatenated positive class samples')
+    parser.add_argument('--neg_samples', type=str, default='not_hey_snips_long.wav',
+                        help='File for concatenated negative class samples')
     parser.add_argument('--sample_rate', type=int, default=16000, help='Sample rate for audio (Hz)')
     parser.add_argument('--frame_width', type=int, default=20, help='Frame width for audio in (ms)')
     parser.add_argument('--examine_audio', default=False, action='store_true', help='Flag to examine problematic audio clips')
@@ -311,7 +322,7 @@ def main(args) -> int:
     total_duration_hrs = duration_test(FAR_path, args.sample_rate) / 3600
     print(f'Total duration of FA set is {total_duration_hrs:.2f} hrs')
 
-    # get predictions from model on positive samples
+    # # get predictions from model on positive samples
     all_posterior_wakeword = load_posteriors(args.models_dir, args.model_type, args.frame_width,
                                              args.sample_rate, "false_negatives", wakeword_paths,
                                              Path(os.path.join(args.models_dir,
@@ -334,3 +345,4 @@ def main(args) -> int:
 if __name__ == '__main__':
     args = parse_args()
     sys.exit(main(args))
+
