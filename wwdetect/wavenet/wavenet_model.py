@@ -135,6 +135,7 @@ class wavenet(tf.keras.Model):
     def save_to_tflite(self, out_dir):
         encode_converter = tf.lite.TFLiteConverter.from_keras_model(self.encoder)
         detect_converter = tf.lite.TFLiteConverter.from_keras_model(self.detect)
+
         tflite_encode_model = encode_converter.convert()
         tflite_detect_model = detect_converter.convert()
 
@@ -143,6 +144,22 @@ class wavenet(tf.keras.Model):
             f.write(tflite_encode_model)
 
         with open(os.path.join(out_dir, 'detect.tflite'), 'wb') as f:
+            f.write(tflite_detect_model)
+
+        # enable weight quantization
+        encode_converter.optimizations = [tf.lite.Optimize.DEFAULT]
+        encode_converter.target_spec.supported_types = [tf.float16]
+        detect_converter.optimizations = [tf.lite.Optimize.DEFAULT]
+        detect_converter.target_spec.supported_types = [tf.float16]
+
+        tflite_encode_model = encode_converter.convert()
+        tflite_detect_model = detect_converter.convert()
+
+        # Save the model.
+        with open(os.path.join(out_dir, 'encode-quant.tflite'), 'wb') as f:
+            f.write(tflite_encode_model)
+
+        with open(os.path.join(out_dir, 'detect-quant.tflite'), 'wb') as f:
             f.write(tflite_detect_model)
 
 def build_wavenet_model(args):
