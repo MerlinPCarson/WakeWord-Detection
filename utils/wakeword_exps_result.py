@@ -198,7 +198,7 @@ def plot_compare_pruning_exps(wavenet_results, CRNN_results, exp_vals, exp_type,
 
     # set a tight bound between minimum and maximum accuracies
     plt.ylim(min(max(0,min(y_vals_wavenet)-0.005),max(0, min(y_vals_CRNN)-0.005)), max(min(1, max(y_vals_wavenet)+0.005), min(1, max(y_vals_CRNN)+0.005)))
-    #plt.ylim((max(0, min(y_vals)-0.005), min(1, max(y_vals)+0.005)))
+
     plt.xticks(locs + width/2, exp_vals)
     # set style
     plt.ylabel(f'{metric}')
@@ -206,7 +206,7 @@ def plot_compare_pruning_exps(wavenet_results, CRNN_results, exp_vals, exp_type,
     ax.set_facecolor('lightgray')
     plt.grid(color='white', zorder=0)
     plt.tight_layout()
-    plt.legend()
+    plt.legend(loc=2)
 
     # save figure
     plt.savefig(f'Exp-{exp_type}-{metric}.pdf')

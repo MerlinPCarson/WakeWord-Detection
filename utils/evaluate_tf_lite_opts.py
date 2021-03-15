@@ -55,7 +55,7 @@ def models_predict(encode_model, detect_model, X, model_type, threshold=0.5):
             x = np.expand_dims(x.T, 0)
             x = np.expand_dims(x, -1)
             x = np.array(encode_model(x)).squeeze(0)
-            x = detect_model(x)[0][0][0]
+            posteriors.append(detect_model(x)[0][0][1])
 
         # inference for Wavenet model
         elif model_type == 'Wavenet':
@@ -89,12 +89,12 @@ def metrics(preds, targets):
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Evaluation script for TF-Lite models.')
-    parser.add_argument('--tf_models_dir', type=str, default='wavenet_model_preproc_enhanced', help='Directory to saved TF-Lite models')
+    parser.add_argument('--tf_models_dir', type=str, default='CRNN_tf_model', help='Directory to saved TF-Lite models')
     parser.add_argument('--dataset_dir', type=str, default='data_speech_isolated/silero', help='Directory with testing vectors in H5 format')
     parser.add_argument('--testset', type=str, default='test.h5', help='Filename for testing vectors in H5 format')
-    parser.add_argument('--timesteps', type=int, default=182, help='Number of timesteps used as input to models')
+    parser.add_argument('--timesteps', type=int, default=151, help='Number of timesteps used as input to models')
     parser.add_argument('--num_features', type=int, default=40, help='Number of features per timestep used as input to models')
-    parser.add_argument('--model_type', type=str, default='Wavenet', choices=['CRNN', 'Wavenet'],
+    parser.add_argument('--model_type', type=str, default='CRNN', choices=['CRNN', 'Wavenet'],
                         help='Model type being evaluated.')
 
     return parser.parse_args()
@@ -125,20 +125,6 @@ def main(args):
     results['float16'] = metrics(preds, y)
 
     pickle.dump(results, open(os.path.join(args.tf_models_dir, 'tf_lite_results.npy'), 'wb'))
-
-    sys.exit()
-
-    if not args.eval_file:
-        # evaluate each model in comma seperated list
-        eval_models = args.eval_model.split(',')
-    else:
-        # load model names from experiment metadata file
-        eval_models = experiment_models(args.eval_file)
-
-    for model in eval_models:
-        print(f'Evaluating model {model}')
-        args.eval_model = model
-        evaluate(testset, args)
 
     print(f'Script completed in {time.time()-start:.2f} secs')
 
