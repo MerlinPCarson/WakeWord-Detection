@@ -95,7 +95,7 @@ def main(args):
     # create dataloader
     testset = HeySnipsDataset([os.path.join(args.dataset_dir, args.testset)], 
                               num_features=args.num_features, workers=2,
-                              shuffle=False)
+                              batch_size=args.batch_size, shuffle=False)
 
     print(f'{testset.number_of_examples()} testing examples')
 
