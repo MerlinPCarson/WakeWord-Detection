@@ -171,7 +171,6 @@ def concatenate_FA(wavs, num_files, FAR_path):
     for wav in tqdm(wavs[1:num_files]):
         wavs_concat += AudioSegment.silent(duration=100) + wav
 
-
     wavs_concat.export(FAR_path, format="wav")
 
 

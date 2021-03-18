@@ -22,6 +22,9 @@ def main(args):
     np.random.seed(args.seed)
     tf.random.set_seed(args.seed)
 
+    # make model directory for model experiments metadata file
+    os.makedirs(os.path.dirname(args.model))
+
     # create dataloaders for training and validation sets
     trainset, valset = load_datasets(args)
     print(f'{trainset.number_of_examples()} training examples, {valset.number_of_examples()} validation examples')
@@ -37,33 +40,38 @@ def main(args):
     # ratio of wakewords in dataset to use for training, iterating from max to min by step
     keep_ratios = np.arange(min_wakeword_ratio, max_wakeword_ratio+wakeword_ratio_step/10, wakeword_ratio_step)
 
-    exps = {'model_name': os.path.basename(args.model), 'keep_ratios': [f'{keep_ratio:0.2f}' for keep_ratio in keep_ratios],
-            'num_wakeword': [int(trainset.number_of_wakewords() * keep_ratio) for keep_ratio in keep_ratios]}
+    # experiment metadata
+    exps = {'model_name': os.path.basename(args.model), 'keep_ratios': [],
+            'num_speakers': [], 'num_wakewords': []}
 
-    # make model directory for model experiments metadata files
-    os.makedirs(os.path.dirname(args.model))
-
-    # saving experiment info
-    pickle.dump(exps, open(f'{args.model}-exps.npy', 'wb'))
-
-    print(f'Conducting training for models with wakeword keep ratios of: {keep_ratios}')
+    print(f'Conducting training for models with speaker keep ratios of: {keep_ratios}')
     for keep_ratio in reversed(keep_ratios):
 
         # set experiment specific arguments
         args.wakeword_keep_ratio = f'{keep_ratio:0.2f}'
         args.model = f'{model_name}_{args.wakeword_keep_ratio}'
 
-        # prune 1-keep_ratio of wakewords from training set
-        if keep_ratio < 1.0:
-            print(f'Pruning wakewords with a keep ratio of {keep_ratio}')
-            trainset.prune_wakewords(keep_ratio)
-            print(f'new size of training set {trainset.number_of_examples()} examples')
-            print(f'new number of wakewords in training set {trainset.number_of_wakewords()} examples')
+        print(f'Pruning wakewords with a keep ratio of {keep_ratio}')
+        trainset.prune_speakers(keep_ratio)
+        print(f'Size of training set {trainset.number_of_examples()} examples')
+
+        # get new stats 
+        num_speakers = trainset.number_of_speakers()
+        num_wakewords = trainset.number_of_wakewords()
+
+        print(f'Number of speakers in training set: {trainset.number_of_speakers()}')
+        print(f'Number of wakewords examples in training set {trainset.number_of_wakewords()}')
 
         # train the model with the keep ratio
         train(trainset, valset, args)
 
-    
+        # save stats to experiment metadata
+        exps['keep_ratios'].append(keep_ratio)
+        exps['num_speakers'].append(num_speakers)
+        exps['num_wakewords'].append(num_wakewords)
+
+        # saving experiment info 
+        pickle.dump(exps, open(f'{model_name}-speaker_exps.npy', 'wb'))
     
     print(f'Script completed in {time.time()-start:.2f} secs')
 
