@@ -179,7 +179,7 @@ class WakewordTrigger:
         # calculate a scalar probability of whether
         # the frame contains the wakeword
         frame = self.decode_window.read_all()
-        posterior = self.detect_model(frame)[0][0][0]
+        posterior = self.detect_model(frame)[0][0][1]
 
         if posterior > self._posterior_max:
             self._posterior_max = posterior
