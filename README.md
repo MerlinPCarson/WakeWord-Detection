@@ -60,5 +60,6 @@ Training and evaluation scripts for wake word detection DNN models.
     * The purpose of this module is to compare the evaluation results of both models with the described results in the Coucke *et al.* paper
     
 ## License
-Copyright 2021: Alireza Bayestehtashk, Amie Roten, Merlin Carson, Meysam Asagari  
+all code Copyright 2021: Alireza Bayestehtashk, Amie Roten, Merlin Carson, Meysam Asagari
+except spokestack Copyright 2020 Spokestack, Inc.     
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
