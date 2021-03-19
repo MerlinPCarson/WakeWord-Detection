@@ -11,6 +11,8 @@ from spokestack.context import SpeechContext
 from spokestack.models.tensorflow import TFLiteModel
 from spokestack.ring_buffer import RingBuffer
 
+from pydub import AudioSegment
+from pydub.playback import play
 
 _LOG = logging.getLogger(__name__)
 
@@ -75,7 +77,7 @@ class WakewordTrigger:
             self.mel_width: int = self.encode_model.input_details[0]["shape"][2]
 
         # initialize the first state input for autoregressive encoder model
-        # retrieve the encode_length and encode_width from the model detect_model
+        # retrieve the encode_lenth and encode_width from the model detect_model
         # metadata. We get the dimensions from the detect_model inputs because the
         # encode_model runs autoregressively and outputs a single encoded sample.
         # the detect_model input is a collection of these samples.
@@ -104,6 +106,19 @@ class WakewordTrigger:
         self._posterior_max: float = 0.0
         self._prev_sample: float = 0.0
         self._is_speech: bool = False
+
+        # audio segments for reponse on wake
+        self.load_awake_responses('audio_responses')
+
+    def load_awake_responses(self, audio_path):
+        # load all mp3's from audio_path for wake responses
+        segs = []
+        for f in os.listdir(audio_path):
+            f_path = os.path.join(audio_path, f)
+            if os.path.isfile(f_path) and '.mp3' in f_path:
+                segs.append(AudioSegment.from_mp3(f_path))
+
+        self.audio_responses = np.array(segs, dtype=object)
 
     def __call__(self, context: SpeechContext, frame) -> None:
         """Entry point of the trigger
@@ -215,8 +230,10 @@ class WakewordTrigger:
         if posterior > self._posterior_max:
             self._posterior_max = posterior
         if posterior > self._posterior_threshold:
-            context.is_active = True
-            _LOG.info(f"AWAKE!: {self._posterior_max}")
+            if not context.is_active:
+                _LOG.info(f"AWAKE!: {self._posterior_max}")
+                play(np.random.choice(self.audio_responses))
+                context.is_active = True
 
     def reset(self) -> None:
         """ Resets the currect WakewordDetector state """
