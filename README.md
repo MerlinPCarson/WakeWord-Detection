@@ -61,5 +61,5 @@ Training and evaluation scripts for wake word detection DNN models.
     
 ## License
 all code Copyright 2021: Alireza Bayestehtashk, Amie Roten, Merlin Carson, Meysam Asagari     
-except spokestack Copyright 2020 Spokestack, Inc.     
+except spokestack Copyright 2020: Spokestack, Inc.     
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
