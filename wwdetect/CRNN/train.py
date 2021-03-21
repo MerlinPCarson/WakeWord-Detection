@@ -21,12 +21,7 @@ set_seed(42)
 
 # Parameters as defined in Arik et al (set to best performing in paper).
 # Note: preprocessed files using filter_dataset.py use frame widths of 20ms,
-#       with a 10ms stride (50% overlap). Given the overlap, 151 frames should
-#       still correspond to 1.5 seconds, so using the same dimensions as Arik
-#       et al.
-#
-#       TODO: 149 frames is actually 1.5 seconds, not 151. Could fix, not
-#             a huge deal.
+#       with a 10ms stride (50% overlap).
 
 # Convolutional layer parameters:
 N_C = 32  # Number of filters in convolutional layer.
@@ -248,7 +243,7 @@ def parse_args():
     :return: Arguments dict.
     '''
     parser = argparse.ArgumentParser(description='Trains CRNN, outputs model files.')
-    parser.add_argument('--data_dir', type=str, default='../../data/',
+    parser.add_argument('--data_dir', type=str, default='data/',
                         help='Directory where training data is stored.')
     parser.add_argument('--hyperparameter_search', type=bool, default=False)
     parser.add_argument('--early_stopping', type=bool, default=True)
