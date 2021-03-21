@@ -225,7 +225,10 @@ class WakewordTrigger:
         if self.model_type == 'CRNN':
             frame = frame.squeeze(0)
 
-        posterior = self.detect_model(frame)[0][0][1]
+        if self.model_type == "CRNN":
+            posterior = self.detect_model(frame)[0][0][0]
+        else:
+            posterior = self.detect_model(frame)[0][0][1]
 
         if posterior > self._posterior_max:
             self._posterior_max = posterior
