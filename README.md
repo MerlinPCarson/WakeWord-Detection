@@ -7,6 +7,14 @@ Training and evaluation scripts for wake word detection DNN models.
 
 >** see requirements.txt for specific packages and version
 
+# Demo
+
+- CRNN
+  > python demo.py --models_dir tf_lite_models/CRNN --model_type CRNN
+- Wavenet
+  > python demo.py --models_dir tf_lite_models/Wavenet --model_type Wavenet
+  
+  
 # Dataset 
 ["hey-snips" research dataset](https://github.com/sonos/keyword-spotting-research-datasets) 
 
