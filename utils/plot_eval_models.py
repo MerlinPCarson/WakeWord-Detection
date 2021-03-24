@@ -9,8 +9,9 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from evaluate_models import testset_files, duration_test
 
-# estimate of wavenet paper results from figure
-WAVENET_PAPER_RESULTS = [[0.0,0.1,0.2,0.4,0.6,0.8,1.0],[0.015, 0.01,0.005,0.0001,0.00005,0.0,0.0]] 
+# estimate of Coucke et al. wavenet paper results from figure
+WAVENET_PAPER_RESULTS = [[0.0, 0.0, 0.1, 0.2, 0.4, 0.8, 1.0, 4.5],
+                         [0.025, 0.015, 0.01, 0.005, 0.0045, 0.004, 0.0, 0.0]]
 
 def plot_FRR_FAR(results):
     
@@ -38,20 +39,31 @@ def plot_FRR_FAR(results):
     fig, ax = plt.subplots(1,1)
     ax.set_facecolor('lightgray')
     for model in results:
-        plt.plot(results[model]['FAR'], results[model]['FRR'], 
+        color = 'red'
+        if model == 'CRNN':
+            color = 'blue'
+        plt.plot(results[model]['smooth_FAR'], results[model]['smooth_FRR'], color=color,
                  label=f"{model} thresholds: {{{results[model]['thresholds'][0]:.2f},..,{results[model]['thresholds'][-1]:.3f}}}")
 
     # add max values to paper est. results to fit graph
     xmin, xmax, ymin, ymax = plt.axis()
+    print(xmax)
     WAVENET_PAPER_RESULTS[0].append(xmax)
     WAVENET_PAPER_RESULTS[1].insert(0, ymax)
-    plt.plot(WAVENET_PAPER_RESULTS[0], WAVENET_PAPER_RESULTS[1], label='Wavenet Coucke et al. Paper')
+    plt.plot(WAVENET_PAPER_RESULTS[0], WAVENET_PAPER_RESULTS[1], color='green', label='Wavenet Coucke et al. Paper')
+    plt.xlim(0,WAVENET_PAPER_RESULTS[0][-1])
 
     plt.xlabel("False Alarms per Hour")
     plt.ylabel("False Rejection Rate")
+
+    # sets for bounds for plot
+    plt.xlim(0,12)
+#    plt.ylim(0,0.25)
+
     plt.grid(color='white')
     plt.legend()
     plt.tight_layout()
+    plt.savefig('far_frr.pdf')
     plt.show()
     plt.close()
 
@@ -88,7 +100,7 @@ def process_results(results, num_wakewords, not_wakeword_duration_hrs):
     for model in results:
 
         # range of thresholds to apply to posteriors
-        thresholds = np.arange(0.5,0.99999,0.005)
+        thresholds = np.arange(0.5,0.9905,0.001)
 
         FRR = []
         FAR = []
@@ -101,7 +113,6 @@ def process_results(results, num_wakewords, not_wakeword_duration_hrs):
             reject_percentage = rejects / num_wakewords
             FRR.append(reject_percentage)
 
-            prev_wake = False
             accepts = 0
 
             # measure false positives
@@ -109,8 +120,10 @@ def process_results(results, num_wakewords, not_wakeword_duration_hrs):
             accepts_rate = accepts / not_wakeword_duration_hrs 
             FAR.append(accepts_rate)
 
-        results[model]['FRR'] = FRR
-        results[model]['FAR'] = FAR
+        results[model]['FRR'] = sorted(FRR)[::-1]
+        results[model]['FAR'] = sorted(FAR)
+        results[model]['smooth_FAR'] =  np.convolve(results[model]['FAR'], np.ones((30,))/30, mode='valid')
+        results[model]['smooth_FRR'] =  np.convolve(results[model]['FRR'], np.ones((30,))/30, mode='valid')
         results[model]['thresholds'] = thresholds
 
     return results

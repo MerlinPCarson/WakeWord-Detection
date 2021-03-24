@@ -16,27 +16,11 @@ import numpy as np
 import librosa
 from matplotlib import pyplot as plt
 
-from spokestack.io.pyaudio import PyAudioInput
-from spokestack.pipeline import SpeechPipeline
-from spokestack.vad.webrtc import VoiceActivityDetector
-from spokestack.wakeword.tflite import WakewordTrigger
-from spokestack.activation_timeout import ActivationTimeout
-from spokestack.models.tensorflow import TFLiteModel
+from tf_lite.tf_lite import TFLiteModel
 from tf_lite.filter import Filter
 from tf_lite.ring_buffer import RingBuffer
 
 logging.basicConfig(level=logging.INFO)
-
-# Currently not functional.
-def evaluate_FRR_full_pipeline(model_type="CRNN", test_file="data/evaluation/hey_snips_2min_37_samples.wav"):
-    audio = AudioSegment.from_wav(str(test_file))
-    file = PyAudioInput(sample_rate=16000, frame_width=20, from_file=True, wav=audio)
-    vad = VoiceActivityDetector(frame_width=20)
-    wake = WakewordTrigger(model_dir=model_type , model_type=model_type, posterior_threshold=0.1)
-    timeout = ActivationTimeout(frame_width=20, min_active=500, max_active=500)
-    pipeline = SpeechPipeline(file, [vad,wake,timeout])
-    pipeline.start()
-    pipeline.run()
 
 
 def get_posterior(models_dir, model_type, eval_type,
